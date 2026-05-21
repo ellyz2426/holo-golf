@@ -1,14 +1,16 @@
 /**
- * Holo Golf VR — Browser Input Handler
+ * Holo Golf VR — Browser Input Handler (Round 3 Overhaul)
  * Mouse/keyboard controls for desktop play.
  * Click + drag back from ball = aim + power, release = putt.
  * Right-drag orbits the camera around the ball. Scroll to zoom.
+ * Integrates with XR controller camera orbit via xrInput.cameraOrbitDelta.
  */
 import { World, Vector3 } from "@iwsdk/core";
 import { PutterController } from "./putter";
 import { BallController } from "./ball";
 import { GameManager, GameState } from "./game";
 import { UIManager } from "./ui";
+import { XRInputHandler } from "./xrinput";
 import { PowerMeter } from "./powermeter";
 import { ScorecardOverlay } from "./scorecard";
 
@@ -24,6 +26,9 @@ export class BrowserInputHandler {
   private mouseDown = false;
   private powerMeter: PowerMeter;
   private scorecard: ScorecardOverlay;
+
+  // XR input reference for camera orbit sync
+  xrInput: XRInputHandler | null = null;
 
   // Camera orbit
   private cameraAngle = 0;
@@ -125,7 +130,9 @@ export class BrowserInputHandler {
           break;
         case "enter":
         case " ":
-          if (this.game.state === GameState.COURSE_COMPLETE) {
+          if (this.game.state === GameState.HOLE_COMPLETE) {
+            this.game.skipToNextHole();
+          } else if (this.game.state === GameState.COURSE_COMPLETE) {
             this.ui.showCourseComplete();
           }
           break;
@@ -139,16 +146,25 @@ export class BrowserInputHandler {
   }
 
   update(dt: number) {
+    // Apply XR controller camera orbit delta
+    if (this.xrInput) {
+      const delta = this.xrInput.cameraOrbitDelta;
+      if (delta.horizontal !== 0) {
+        this.cameraAngle -= delta.horizontal;
+      }
+      if (delta.vertical !== 0) {
+        this.cameraElevation = Math.max(0.1, Math.min(1.2, this.cameraElevation + delta.vertical));
+      }
+    }
+
     // Camera follows ball during gameplay
     const state = this.game.state;
     const isPlaying = state === GameState.AIMING || state === GameState.BALL_MOVING ||
                       state === GameState.HOLE_COMPLETE || state === GameState.PLAYING;
 
     if (isPlaying && this.ball.isActive) {
-      // Smoothly track ball position
       this.cameraTarget.lerp(this.ball.position, dt * 3);
     } else if (isPlaying) {
-      // If ball isn't active yet, track the hole area
       const hole = this.game.getCurrentHole();
       if (hole) {
         const mid = hole.teePosition.clone().add(hole.holePosition).multiplyScalar(0.5);
@@ -157,11 +173,6 @@ export class BrowserInputHandler {
     }
 
     // Compute orbit camera position
-    const camera = (this.world as any).scene?.userData?.camera ??
-                   (this.world as any).camera ??
-                   (this.world as any)._camera;
-
-    // Try to get Three.js camera from the world's scene children
     let cam: any = null;
     if ((this.world as any).scene) {
       const scene = (this.world as any).scene;
@@ -170,11 +181,6 @@ export class BrowserInputHandler {
           cam = child;
         }
       });
-    }
-
-    if (!cam && (this.world as any).renderer) {
-      // Try via renderer
-      cam = camera;
     }
 
     if (cam) {

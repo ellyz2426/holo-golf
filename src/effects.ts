@@ -1,6 +1,7 @@
 /**
- * Holo Golf VR — Effects Manager
- * Visual effects: hole-in-one celebration, under-par sparkle, transitions.
+ * Holo Golf VR — Effects Manager (Round 3 Overhaul)
+ * Visual effects: hole-in-one celebration, under-par sparkle, transitions,
+ * stroke limit, course-specific particle palettes.
  */
 import {
   World,
@@ -19,6 +20,7 @@ import {
   Float32BufferAttribute,
   Points,
   PointsMaterial,
+  TorusGeometry,
 } from "@iwsdk/core";
 
 interface Particle {
@@ -34,13 +36,29 @@ interface ExpandingRing {
   speed: number;
 }
 
+interface PulsingOrb {
+  mesh: Mesh;
+  life: number;
+  maxLife: number;
+  baseScale: number;
+  pulseRate: number;
+}
+
+// Course-specific particle palettes
+const COURSE_PALETTES = [
+  [0x00ffff, 0x44ff88, 0x0088ff, 0x88aaff], // Neon Circuit
+  [0xff44aa, 0x8844ff, 0xaa66ff, 0xff88cc], // Quantum Field
+  [0xff6600, 0xffaa00, 0xff4400, 0xffcc44], // Cosmic Abyss
+];
+
 export class EffectsManager {
   private world: World;
   private particles: Particle[] = [];
   private rings: ExpandingRing[] = [];
+  private orbs: PulsingOrb[] = [];
   private effectsGroup: Group;
-  private transitionOverlay: Mesh | null = null;
   private transitionTimer = 0;
+  private currentCourseIndex = 0;
 
   constructor(world: World) {
     this.world = world;
@@ -48,32 +66,47 @@ export class EffectsManager {
     world.scene.add(this.effectsGroup);
   }
 
+  setCourseIndex(index: number) {
+    this.currentCourseIndex = index;
+  }
+
+  private getPalette(): number[] {
+    return COURSE_PALETTES[this.currentCourseIndex] || COURSE_PALETTES[0];
+  }
+
   holeInOneEffect(pos: Vector3) {
-    // Massive particle burst + expanding rings + column of light
-    this.spawnParticleBurst(pos, 80, [0xffff00, 0xff8800, 0x00ffff, 0xff44aa], 4.0);
+    // Massive particle burst + expanding rings + column of light + orbiting torus
+    this.spawnParticleBurst(pos, 100, [0xffff00, 0xff8800, 0x00ffff, 0xff44aa, 0xffffff], 4.0);
 
     // Multiple expanding rings
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 6; i++) {
       this.spawnExpandingRing(
-        pos.clone().add(new Vector3(0, 0.1 + i * 0.15, 0)),
-        [0xffff00, 0xff8800, 0x00ffff][i % 3],
-        1.5 + i * 0.3,
+        pos.clone().add(new Vector3(0, 0.1 + i * 0.12, 0)),
+        [0xffff00, 0xff8800, 0x00ffff, 0xffffff][i % 4],
+        2.0 + i * 0.2,
       );
     }
 
     // Light column
-    this.spawnLightColumn(pos, 0xffff00, 3.0);
+    this.spawnLightColumn(pos, 0xffff00, 3.5);
+    this.spawnLightColumn(pos.clone().add(new Vector3(0, 0, 0)), 0xffffff, 2.5);
+
+    // Pulsing celebration orb
+    this.spawnPulsingOrb(pos.clone().add(new Vector3(0, 0.5, 0)), 0xffff00, 3.0, 0.2);
   }
 
   underParEffect(pos: Vector3) {
-    this.spawnParticleBurst(pos, 40, [0x00ffff, 0x44ff88, 0x88aaff], 2.5);
-    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.1, 0)), 0x00ffff, 1.5);
-    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.2, 0)), 0x44ff88, 1.0);
+    const palette = this.getPalette();
+    this.spawnParticleBurst(pos, 50, [...palette, 0xffffff], 2.5);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.1, 0)), palette[0], 1.5);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.2, 0)), palette[1], 1.0);
+    this.spawnPulsingOrb(pos.clone().add(new Vector3(0, 0.3, 0)), palette[0], 2.0, 0.15);
   }
 
   holeCompleteEffect(pos: Vector3) {
-    this.spawnParticleBurst(pos, 20, [0x00ffff, 0x4488ff], 1.5);
-    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.1, 0)), 0x0088ff, 1.0);
+    const palette = this.getPalette();
+    this.spawnParticleBurst(pos, 25, palette, 1.5);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.1, 0)), palette[2], 1.0);
   }
 
   holeTransition() {
@@ -81,9 +114,31 @@ export class EffectsManager {
   }
 
   teleportEffect(pos: Vector3) {
-    this.spawnParticleBurst(pos, 30, [0x8844ff, 0xaa66ff, 0xcc88ff, 0x4422cc], 2.0);
-    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.05, 0)), 0x8844ff, 1.0);
+    this.spawnParticleBurst(pos, 40, [0x8844ff, 0xaa66ff, 0xcc88ff, 0x4422cc, 0xffffff], 2.0);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.05, 0)), 0x8844ff, 1.2);
     this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.15, 0)), 0xaa66ff, 0.8);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.25, 0)), 0xcc88ff, 0.6);
+  }
+
+  strokeLimitEffect(pos: Vector3) {
+    // Subdued red/orange "failed" effect
+    this.spawnParticleBurst(pos, 15, [0xff2200, 0xff4400, 0xff6600], 1.5);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.1, 0)), 0xff4400, 1.0);
+  }
+
+  // Spawn a short-lived pulsing orb for celebration
+  private spawnPulsingOrb(pos: Vector3, color: number, duration: number, size: number) {
+    const geo = new SphereGeometry(size, 16, 16);
+    const mat = new MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.5,
+      blending: AdditiveBlending,
+    });
+    const mesh = new Mesh(geo, mat);
+    mesh.position.copy(pos);
+    this.effectsGroup.add(mesh);
+    this.orbs.push({ mesh, life: duration, maxLife: duration, baseScale: 1, pulseRate: 8 });
   }
 
   private spawnParticleBurst(
@@ -146,7 +201,6 @@ export class EffectsManager {
     mesh.position.y += 2.5;
     this.effectsGroup.add(mesh);
 
-    // Treat as particle for lifecycle
     this.particles.push({
       mesh,
       velocity: new Vector3(0, 0, 0),
@@ -163,19 +217,17 @@ export class EffectsManager {
 
       if (p.life <= 0) {
         this.effectsGroup.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        (p.mesh.material as MeshBasicMaterial).dispose();
         this.particles.splice(i, 1);
         continue;
       }
 
-      // Move
       p.mesh.position.add(p.velocity.clone().multiplyScalar(dt));
-      p.velocity.y -= 3 * dt; // gravity
+      p.velocity.y -= 3 * dt;
 
-      // Fade
       const t = p.life / p.maxLife;
       (p.mesh.material as MeshBasicMaterial).opacity = t;
-
-      // Scale down
       const scale = 0.3 + t * 0.7;
       p.mesh.scale.setScalar(scale);
     }
@@ -187,16 +239,35 @@ export class EffectsManager {
 
       if (r.life <= 0) {
         this.effectsGroup.remove(r.mesh);
+        r.mesh.geometry.dispose();
+        (r.mesh.material as MeshBasicMaterial).dispose();
         this.rings.splice(i, 1);
         continue;
       }
 
-      // Expand
       const scale = r.mesh.scale.x + r.speed * dt;
       r.mesh.scale.setScalar(scale);
-
-      // Fade
       (r.mesh.material as MeshBasicMaterial).opacity *= 0.97;
+    }
+
+    // Update pulsing orbs
+    for (let i = this.orbs.length - 1; i >= 0; i--) {
+      const o = this.orbs[i];
+      o.life -= dt;
+
+      if (o.life <= 0) {
+        this.effectsGroup.remove(o.mesh);
+        o.mesh.geometry.dispose();
+        (o.mesh.material as MeshBasicMaterial).dispose();
+        this.orbs.splice(i, 1);
+        continue;
+      }
+
+      const t = o.life / o.maxLife;
+      const pulse = 1 + Math.sin(performance.now() * 0.001 * o.pulseRate) * 0.3;
+      o.mesh.scale.setScalar(o.baseScale * pulse * (0.5 + t * 0.5));
+      (o.mesh.material as MeshBasicMaterial).opacity = t * 0.5;
+      o.mesh.position.y += dt * 0.3; // float upward
     }
 
     // Transition

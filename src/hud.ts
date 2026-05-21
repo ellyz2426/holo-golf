@@ -1,6 +1,7 @@
 /**
- * Holo Golf VR — HUD Manager
+ * Holo Golf VR — HUD Manager (Round 3 Overhaul)
  * In-world heads-up display: hole info, scorecard, power meter.
+ * New: stroke limit indicator, course-themed colors, improved mini-map layout.
  */
 import {
   World,
@@ -14,27 +15,33 @@ import {
   BoxGeometry,
   CanvasTexture,
 } from "@iwsdk/core";
-import { GameManager, GameState } from "./game";
+import { GameManager, GameState, MAX_STROKES_PER_HOLE } from "./game";
+
+// Course theme colors
+const COURSE_COLORS = [
+  { primary: "#00ffff", secondary: "#44ff88", accent: "#0088ff" },
+  { primary: "#ff44aa", secondary: "#8844ff", accent: "#cc66ff" },
+  { primary: "#ff6600", secondary: "#ffaa00", accent: "#ff4400" },
+];
 
 export class HUDManager {
   private world: World;
   private game: GameManager;
   private hudGroup: Group;
 
-  // Canvas-based HUD
   private canvas: HTMLCanvasElement;
   private ctx2d: CanvasRenderingContext2D;
   private texture: CanvasTexture;
   private hudMesh: Mesh;
   private dirty = true;
   private lastState: GameState = GameState.LOADING;
+  private lastStrokes = 0;
 
   constructor(world: World, game: GameManager) {
     this.world = world;
     this.game = game;
     this.hudGroup = new Group();
 
-    // Create canvas for text rendering
     this.canvas = document.createElement("canvas");
     this.canvas.width = 512;
     this.canvas.height = 256;
@@ -56,65 +63,49 @@ export class HUDManager {
 
     world.scene.add(this.hudGroup);
 
-    // Listen for state changes
     game.onStateChange(() => {
       this.dirty = true;
     });
   }
 
   update(dt: number) {
-    if (this.dirty || this.game.state !== this.lastState) {
+    if (this.dirty || this.game.state !== this.lastState || this.game.currentStrokes !== this.lastStrokes) {
       this.redraw();
       this.lastState = this.game.state;
+      this.lastStrokes = this.game.currentStrokes;
       this.dirty = false;
     }
+  }
+
+  private getTheme() {
+    return COURSE_COLORS[this.game.currentCourseIndex] || COURSE_COLORS[0];
   }
 
   private redraw() {
     const ctx = this.ctx2d;
     const w = this.canvas.width;
     const h = this.canvas.height;
+    const theme = this.getTheme();
 
-    // Clear
     ctx.clearRect(0, 0, w, h);
 
     // Background
     ctx.fillStyle = "rgba(0, 8, 20, 0.75)";
     ctx.fillRect(0, 0, w, h);
 
-    // Border
-    ctx.strokeStyle = "#00ccff";
+    // Border with course theme color
+    ctx.strokeStyle = theme.primary;
     ctx.lineWidth = 2;
     ctx.strokeRect(2, 2, w - 4, h - 4);
 
     // Corner accents
     const cornerSize = 15;
-    ctx.strokeStyle = "#00ffff";
+    ctx.strokeStyle = theme.primary;
     ctx.lineWidth = 3;
-    // Top-left
-    ctx.beginPath();
-    ctx.moveTo(2, cornerSize + 2);
-    ctx.lineTo(2, 2);
-    ctx.lineTo(cornerSize + 2, 2);
-    ctx.stroke();
-    // Top-right
-    ctx.beginPath();
-    ctx.moveTo(w - cornerSize - 2, 2);
-    ctx.lineTo(w - 2, 2);
-    ctx.lineTo(w - 2, cornerSize + 2);
-    ctx.stroke();
-    // Bottom-left
-    ctx.beginPath();
-    ctx.moveTo(2, h - cornerSize - 2);
-    ctx.lineTo(2, h - 2);
-    ctx.lineTo(cornerSize + 2, h - 2);
-    ctx.stroke();
-    // Bottom-right
-    ctx.beginPath();
-    ctx.moveTo(w - cornerSize - 2, h - 2);
-    ctx.lineTo(w - 2, h - 2);
-    ctx.lineTo(w - 2, h - cornerSize - 2);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2, cornerSize + 2); ctx.lineTo(2, 2); ctx.lineTo(cornerSize + 2, 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(w - cornerSize - 2, 2); ctx.lineTo(w - 2, 2); ctx.lineTo(w - 2, cornerSize + 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(2, h - cornerSize - 2); ctx.lineTo(2, h - 2); ctx.lineTo(cornerSize + 2, h - 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(w - cornerSize - 2, h - 2); ctx.lineTo(w - 2, h - 2); ctx.lineTo(w - 2, h - cornerSize - 2); ctx.stroke();
 
     const state = this.game.state;
 
@@ -128,7 +119,7 @@ export class HUDManager {
       if (!hole) return;
 
       // Hole name
-      ctx.fillStyle = "#00ffff";
+      ctx.fillStyle = theme.primary;
       ctx.font = "bold 28px monospace";
       ctx.textAlign = "center";
       ctx.fillText(`HOLE ${hole.index + 1}`, w / 2, 40);
@@ -144,9 +135,12 @@ export class HUDManager {
       ctx.textAlign = "left";
       ctx.fillText(`PAR ${hole.par}`, 25, 110);
 
-      // Strokes
-      ctx.fillStyle = "#ffffff";
-      ctx.fillText(`STROKES: ${this.game.currentStrokes}`, 25, 140);
+      // Strokes with limit indicator
+      const strokeColor = this.game.currentStrokes >= MAX_STROKES_PER_HOLE - 2 ? "#ff4444"
+        : this.game.currentStrokes >= MAX_STROKES_PER_HOLE - 4 ? "#ffaa00"
+        : "#ffffff";
+      ctx.fillStyle = strokeColor;
+      ctx.fillText(`STROKES: ${this.game.currentStrokes}/${MAX_STROKES_PER_HOLE}`, 25, 140);
 
       // Score relative to par
       if (this.game.currentStrokes > 0) {
@@ -166,7 +160,7 @@ export class HUDManager {
       ctx.fillText(`TOTAL: ${totalStrokes}`, w - 25, 140);
 
       // Mini scorecard (bottom)
-      this.drawMiniScorecard(ctx, w, h);
+      this.drawMiniScorecard(ctx, w, h, theme);
 
       // Hole complete overlay
       if (state === GameState.HOLE_COMPLETE) {
@@ -198,7 +192,6 @@ export class HUDManager {
         130,
       );
 
-      // Hole-in-ones
       const holeInOnes = score.holes.filter((h) => h.holeInOne).length;
       if (holeInOnes > 0) {
         ctx.fillStyle = "#ffff00";
@@ -214,12 +207,11 @@ export class HUDManager {
     this.texture.needsUpdate = true;
   }
 
-  private drawMiniScorecard(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  private drawMiniScorecard(ctx: CanvasRenderingContext2D, w: number, h: number, theme: any) {
     const score = this.game.courseScore;
     const startX = 20;
     const startY = h - 70;
     const cellW = (w - 40) / 9;
-    const cellH = 25;
 
     // Hole numbers
     ctx.fillStyle = "#445566";
@@ -258,8 +250,8 @@ export class HUDManager {
 
     // Current hole indicator
     const currentX = startX + this.game.currentHoleIndex * cellW;
-    ctx.strokeStyle = "#00ffff";
+    ctx.strokeStyle = theme.primary;
     ctx.lineWidth = 1;
-    ctx.strokeRect(currentX, startY - 8, cellW, cellH + 25);
+    ctx.strokeRect(currentX, startY - 8, cellW, 50);
   }
 }

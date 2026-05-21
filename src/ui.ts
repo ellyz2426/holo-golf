@@ -1,18 +1,31 @@
 /**
- * Holo Golf VR — UI Manager
+ * Holo Golf VR — UI Manager (Round 3 Overhaul)
  * Title screen, course select, settings, and game-over overlays.
- * Uses HTML overlay for menus.
+ * Full XR controller navigation: handleNavNext/Prev for thumbstick, handleBack for B.
+ * Course-specific color theming.
  */
 import { World } from "@iwsdk/core";
 import { GameManager, GameState } from "./game";
 import { AudioManager } from "./audio";
+
+// Course color themes
+const COURSE_THEMES = [
+  { primary: "#00ffff", secondary: "#0088aa", accent: "#44ff88", name: "Neon Circuit", emoji: "🟢" },
+  { primary: "#ff44aa", secondary: "#cc2266", accent: "#8844ff", name: "Quantum Field", emoji: "🟣" },
+  { primary: "#ff6600", secondary: "#cc4400", accent: "#ffaa00", name: "Cosmic Abyss", emoji: "🔴" },
+];
 
 export class UIManager {
   private world: World;
   private game: GameManager;
   private audio: AudioManager;
   private overlay: HTMLDivElement;
-  private currentScreen: string = "";
+  currentScreen: string = "";
+
+  // XR navigation state
+  private focusIndex = 0;
+  private focusableCount = 0;
+  private focusableIds: string[] = [];
 
   constructor(world: World, game: GameManager, audio: AudioManager) {
     this.world = world;
@@ -36,6 +49,10 @@ export class UIManager {
 
   showTitle() {
     this.currentScreen = "title";
+    this.focusableIds = ["btn-play", "btn-settings"];
+    this.focusIndex = 0;
+    this.focusableCount = 2;
+
     this.overlay.innerHTML = `
       <div style="
         display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -55,12 +72,12 @@ export class UIManager {
             background: linear-gradient(90deg, transparent, #00ffff, transparent);
           "></div>
           <div style="margin-top: 40px;">
-            <button id="btn-play" style="${this.buttonStyle()}">
+            <button id="btn-play" style="${this.buttonStyle()}" data-focus="0">
               ▶ PLAY
             </button>
           </div>
           <div style="margin-top: 15px;">
-            <button id="btn-settings" style="${this.buttonStyle('#ff4488', '#cc2266')}">
+            <button id="btn-settings" style="${this.buttonStyle('#ff4488', '#cc2266')}" data-focus="1">
               ⚙ SETTINGS
             </button>
           </div>
@@ -68,7 +85,8 @@ export class UIManager {
             margin-top: 50px; color: #334455; font-size: 12px; letter-spacing: 2px;
           ">
             MOUSE: CLICK & DRAG TO AIM AND PUTT<br>
-            VR: SWING CONTROLLER TO HIT BALL
+            VR: SWING CONTROLLER OR PRESS TRIGGER<br>
+            <span style="color: #224455; font-size: 11px;">GRIP = POWER BOOST · LEFT STICK = CAMERA</span>
           </div>
         </div>
       </div>
@@ -83,10 +101,15 @@ export class UIManager {
       this.audio.playMenuSelect();
       this.showSettings();
     });
+
+    this.updateFocusHighlight();
   }
 
   showCourseSelect() {
     this.currentScreen = "course_select";
+    this.focusableIds = ["course-0", "course-1", "course-2", "btn-back"];
+    this.focusIndex = 0;
+    this.focusableCount = 4;
 
     this.overlay.innerHTML = `
       <div style="
@@ -98,67 +121,51 @@ export class UIManager {
           text-shadow: 0 0 15px #00ffff;">SELECT COURSE</h2>
 
         <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
-          <div id="course-0" class="course-card" style="${this.courseCardStyle(true)}">
-            <div style="font-size: 40px; margin-bottom: 10px;">🟢</div>
-            <div style="font-size: 20px; color: #00ffff; font-weight: bold;">Neon Circuit</div>
-            <div style="font-size: 12px; color: #6688aa; margin-top: 6px;">9 Holes • Easy-Medium</div>
-            <div style="font-size: 11px; color: #445566; margin-top: 4px;">
-              ${this.getBestScoreText(0)}
+          ${COURSE_THEMES.map((theme, i) => `
+            <div id="course-${i}" class="course-card" style="${this.courseCardStyle(true, i === this.focusIndex)}" data-focus="${i}">
+              <div style="font-size: 40px; margin-bottom: 10px;">${theme.emoji}</div>
+              <div style="font-size: 20px; color: ${theme.primary}; font-weight: bold;">${theme.name}</div>
+              <div style="font-size: 12px; color: #6688aa; margin-top: 6px;">9 Holes • ${i === 0 ? 'Easy-Medium' : i === 1 ? 'Medium-Hard' : 'Expert'}</div>
+              ${i === 2 ? '<div style="font-size: 11px; color: #ff6644; margin-top: 4px;">🌀 Teleporters • 💨 Wind • ❄️ Ice</div>' : ''}
+              <div style="font-size: 11px; color: #445566; margin-top: 4px;">
+                ${this.getBestScoreText(i)}
+              </div>
             </div>
-          </div>
-
-          <div id="course-1" class="course-card" style="${this.courseCardStyle(true)}">
-            <div style="font-size: 40px; margin-bottom: 10px;">🟣</div>
-            <div style="font-size: 20px; color: #ff44aa; font-weight: bold;">Quantum Field</div>
-            <div style="font-size: 12px; color: #6688aa; margin-top: 6px;">9 Holes • Medium-Hard</div>
-            <div style="font-size: 11px; color: #445566; margin-top: 4px;">
-              ${this.getBestScoreText(1)}
-            </div>
-          </div>
-
-          <div id="course-2" class="course-card" style="${this.courseCardStyle(true)}">
-            <div style="font-size: 40px; margin-bottom: 10px;">🔴</div>
-            <div style="font-size: 20px; color: #ff6600; font-weight: bold;">Cosmic Abyss</div>
-            <div style="font-size: 12px; color: #6688aa; margin-top: 6px;">9 Holes • Expert</div>
-            <div style="font-size: 11px; color: #ff6644; margin-top: 4px;">🌀 Teleporters • 💨 Wind • ❄️ Ice</div>
-            <div style="font-size: 11px; color: #445566; margin-top: 2px;">
-              ${this.getBestScoreText(2)}
-            </div>
-          </div>
+          `).join('')}
         </div>
 
-        <button id="btn-back" style="${this.buttonStyle('#445566', '#334455')}; margin-top: 30px;">
+        <button id="btn-back" style="${this.buttonStyle('#445566', '#334455')}; margin-top: 30px;" data-focus="3">
           ← BACK
         </button>
+
+        <div style="margin-top: 20px; color: #223344; font-size: 11px; letter-spacing: 1px;">
+          VR: THUMBSTICK ◄► TO BROWSE · TRIGGER TO SELECT · B TO GO BACK
+        </div>
       </div>
     `;
 
-    this.overlay.querySelector("#course-0")?.addEventListener("click", () => {
-      this.audio.playMenuSelect();
-      this.hideUI();
-      this.game.startCourse(0);
-    });
-
-    this.overlay.querySelector("#course-1")?.addEventListener("click", () => {
-      this.audio.playMenuSelect();
-      this.hideUI();
-      this.game.startCourse(1);
-    });
-
-    this.overlay.querySelector("#course-2")?.addEventListener("click", () => {
-      this.audio.playMenuSelect();
-      this.hideUI();
-      this.game.startCourse(2);
-    });
+    for (let i = 0; i < 3; i++) {
+      this.overlay.querySelector(`#course-${i}`)?.addEventListener("click", () => {
+        this.audio.playMenuSelect();
+        this.hideUI();
+        this.game.startCourse(i);
+      });
+    }
 
     this.overlay.querySelector("#btn-back")?.addEventListener("click", () => {
       this.audio.playMenuSelect();
       this.showTitle();
     });
+
+    this.updateFocusHighlight();
   }
 
   showSettings() {
     this.currentScreen = "settings";
+    this.focusableIds = ["btn-back"];
+    this.focusIndex = 0;
+    this.focusableCount = 1;
+
     this.overlay.innerHTML = `
       <div style="
         display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -186,7 +193,7 @@ export class UIManager {
           </div>
         </div>
 
-        <button id="btn-back" style="${this.buttonStyle('#445566', '#334455')}; margin-top: 20px;">
+        <button id="btn-back" style="${this.buttonStyle('#445566', '#334455')}; margin-top: 20px;" data-focus="0">
           ← BACK
         </button>
       </div>
@@ -209,10 +216,15 @@ export class UIManager {
 
   showCourseComplete() {
     this.currentScreen = "complete";
+    this.focusableIds = ["btn-replay", "btn-menu"];
+    this.focusIndex = 0;
+    this.focusableCount = 2;
+
     const score = this.game.courseScore;
     const totalPar = score.holes.reduce((s, h) => s + h.par, 0);
     const diff = score.totalStrokes - totalPar;
     const holeInOnes = score.holes.filter((h) => h.holeInOne).length;
+    const theme = COURSE_THEMES[this.game.currentCourseIndex] || COURSE_THEMES[0];
 
     this.overlay.innerHTML = `
       <div style="
@@ -224,6 +236,10 @@ export class UIManager {
           text-shadow: 0 0 20px #ffff00, 0 0 40px #ff8800;">
           🏆 COURSE COMPLETE!
         </h2>
+
+        <div style="margin-top: 10px; font-size: 14px; color: ${theme.primary}; letter-spacing: 3px;">
+          ${theme.name.toUpperCase()}
+        </div>
 
         <div style="margin-top: 20px; text-align: center;">
           <div style="font-size: 52px; color: #ffffff; font-weight: bold;">
@@ -240,13 +256,21 @@ export class UIManager {
           ` : ''}
         </div>
 
+        <div style="margin-top: 15px; padding: 12px 20px; border: 1px solid #223344; background: rgba(0,10,20,0.6); font-size: 12px; color: #6688aa;">
+          ${this.buildMiniResultTable(score)}
+        </div>
+
         <div style="margin-top: 30px; display: flex; gap: 15px;">
-          <button id="btn-replay" style="${this.buttonStyle()}">
+          <button id="btn-replay" style="${this.buttonStyle(theme.primary, theme.secondary)}" data-focus="0">
             🔄 REPLAY
           </button>
-          <button id="btn-menu" style="${this.buttonStyle('#ff4488', '#cc2266')}">
+          <button id="btn-menu" style="${this.buttonStyle('#ff4488', '#cc2266')}" data-focus="1">
             🏠 MENU
           </button>
+        </div>
+
+        <div style="margin-top: 15px; color: #223344; font-size: 11px;">
+          VR: TRIGGER TO SELECT · THUMBSTICK ◄► TO BROWSE
         </div>
       </div>
     `;
@@ -261,20 +285,79 @@ export class UIManager {
       this.audio.playMenuSelect();
       this.showTitle();
     });
+
+    this.updateFocusHighlight();
   }
 
+  // === XR Controller Navigation ===
+
   handleSelect() {
-    // For XR controller A button press
     if (this.currentScreen === "title") {
-      this.showCourseSelect();
+      if (this.focusIndex === 0) {
+        this.showCourseSelect();
+      } else {
+        this.showSettings();
+      }
     } else if (this.currentScreen === "course_select") {
-      this.hideUI();
-      this.game.startCourse(0);
+      if (this.focusIndex < 3) {
+        this.hideUI();
+        this.game.startCourse(this.focusIndex);
+      } else {
+        this.showTitle();
+      }
+    } else if (this.currentScreen === "settings") {
+      this.showTitle();
     } else if (this.currentScreen === "complete") {
-      this.hideUI();
-      this.game.startCourse(this.game.currentCourseIndex);
+      if (this.focusIndex === 0) {
+        this.hideUI();
+        this.game.startCourse(this.game.currentCourseIndex);
+      } else {
+        this.showTitle();
+      }
     }
     this.audio.playMenuSelect();
+  }
+
+  handleBack() {
+    if (this.currentScreen === "course_select" || this.currentScreen === "settings") {
+      this.audio.playMenuSelect();
+      this.showTitle();
+    } else if (this.currentScreen === "complete") {
+      this.audio.playMenuSelect();
+      this.showTitle();
+    }
+  }
+
+  handleNavNext() {
+    if (this.focusableCount === 0) return;
+    this.focusIndex = (this.focusIndex + 1) % this.focusableCount;
+    this.audio.playMenuHover();
+    this.updateFocusHighlight();
+  }
+
+  handleNavPrev() {
+    if (this.focusableCount === 0) return;
+    this.focusIndex = (this.focusIndex - 1 + this.focusableCount) % this.focusableCount;
+    this.audio.playMenuHover();
+    this.updateFocusHighlight();
+  }
+
+  private updateFocusHighlight() {
+    // Remove existing focus highlights
+    this.overlay.querySelectorAll("[data-focus]").forEach((el) => {
+      (el as HTMLElement).style.outline = "none";
+      (el as HTMLElement).style.boxShadow = "none";
+    });
+
+    // Add focus to current
+    const focusId = this.focusableIds[this.focusIndex];
+    if (focusId) {
+      const el = this.overlay.querySelector(`#${focusId}`) as HTMLElement;
+      if (el) {
+        el.style.outline = "2px solid #00ffff";
+        el.style.boxShadow = "0 0 15px rgba(0, 255, 255, 0.4)";
+      }
+    }
   }
 
   hideUI() {
@@ -288,6 +371,23 @@ export class UIManager {
 
   update(dt: number) {
     // Nothing continuous needed for HTML overlay
+  }
+
+  private buildMiniResultTable(score: any): string {
+    let html = '<table style="border-collapse: collapse; font-size: 11px; width: 100%;">';
+    html += '<tr style="color: #445566;">';
+    for (let i = 0; i < score.holes.length; i++) {
+      html += `<td style="padding: 2px 6px; text-align: center;">${i + 1}</td>`;
+    }
+    html += '</tr><tr>';
+    for (let i = 0; i < score.holes.length; i++) {
+      const h = score.holes[i];
+      const diff = h.strokes - h.par;
+      const color = h.strokes === 1 ? '#ffff00' : diff < 0 ? '#00ff88' : diff === 0 ? '#ffffff' : '#ff6644';
+      html += `<td style="padding: 2px 6px; text-align: center; color: ${color}; font-weight: bold;">${h.strokes || '-'}</td>`;
+    }
+    html += '</tr></table>';
+    return html;
   }
 
   private getBestScoreText(courseIndex: number): string {
@@ -310,10 +410,10 @@ export class UIManager {
     `;
   }
 
-  private courseCardStyle(playable: boolean): string {
+  private courseCardStyle(playable: boolean, focused = false): string {
     return `
       width: 220px; padding: 25px; text-align: center;
-      border: 2px solid ${playable ? "#00ffff" : "#223344"};
+      border: 2px solid ${playable ? (focused ? "#ffffff" : "#00ffff") : "#223344"};
       background: rgba(0, 15, 30, 0.8);
       cursor: ${playable ? "pointer" : "default"};
       transition: all 0.2s ease;

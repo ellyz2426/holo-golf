@@ -1,6 +1,7 @@
 /**
- * Holo Golf VR — Game Manager
+ * Holo Golf VR — Game Manager (Round 3 Overhaul)
  * Central state machine: TITLE → COURSE_SELECT → PLAYING → HOLE_COMPLETE → COURSE_COMPLETE
+ * New: stroke limit per hole, skip-to-next-hole, course-specific theme colors.
  */
 import { World, Vector3 } from "@iwsdk/core";
 import { BallController } from "./ball";
@@ -8,6 +9,8 @@ import { PutterController } from "./putter";
 import { CourseManager, HoleData } from "./course";
 import { EffectsManager } from "./effects";
 import { AudioManager } from "./audio";
+
+export const MAX_STROKES_PER_HOLE = 10;
 
 export enum GameState {
   LOADING = "loading",
@@ -45,7 +48,7 @@ export class GameManager {
   bestScores: Map<string, number> = new Map();
 
   private world: World;
-  private courseManager: CourseManager;
+  courseManager: CourseManager;
   private ball: BallController;
   private putter: PutterController;
   private effects: EffectsManager;
@@ -88,6 +91,10 @@ export class GameManager {
     this.currentStrokes = 0;
     const course = this.courseManager.getCourse(courseIndex);
     this.courseScore = this.createEmptyScore(course.name);
+
+    // Switch ambient music based on course
+    this.audio.switchCourseAmbient(courseIndex);
+
     this.loadHole(0);
     this.setState(GameState.PLAYING);
   }
@@ -134,6 +141,9 @@ export class GameManager {
     if (dist < 0.15) {
       // Ball is in the hole!
       this.completeHole();
+    } else if (this.currentStrokes >= MAX_STROKES_PER_HOLE) {
+      // Stroke limit reached — auto-complete with max strokes
+      this.completeHole();
     } else {
       // Ball stopped but not in hole
       this.setState(GameState.AIMING);
@@ -144,6 +154,9 @@ export class GameManager {
     const course = this.courseManager.getCourse(this.currentCourseIndex);
     const hole = course.holes[this.currentHoleIndex];
     const holeInOne = this.currentStrokes === 1;
+
+    // Check if actually in hole for effects
+    const inHole = this.ball.position.distanceTo(hole.holePosition) < 0.15;
 
     this.courseScore.holes[this.currentHoleIndex] = {
       holeIndex: this.currentHoleIndex,
@@ -157,21 +170,34 @@ export class GameManager {
       .reduce((sum, h) => sum + h.strokes, 0);
 
     // Effects
-    if (holeInOne) {
-      this.effects.holeInOneEffect(this.ball.position);
-      this.audio.playHoleInOne();
-    } else if (this.currentStrokes <= hole.par) {
-      this.effects.underParEffect(this.ball.position);
-      this.audio.playUnderPar();
+    if (inHole) {
+      if (holeInOne) {
+        this.effects.holeInOneEffect(this.ball.position);
+        this.audio.playHoleInOne();
+      } else if (this.currentStrokes <= hole.par) {
+        this.effects.underParEffect(this.ball.position);
+        this.audio.playUnderPar();
+      } else {
+        this.effects.holeCompleteEffect(this.ball.position);
+        this.audio.playHoleComplete();
+      }
+      this.ball.sinkIntoHole(hole.holePosition);
     } else {
-      this.effects.holeCompleteEffect(this.ball.position);
-      this.audio.playHoleComplete();
+      // Stroke limit reached, ball didn't make it
+      this.effects.strokeLimitEffect(this.ball.position);
+      this.audio.playStrokeLimit();
     }
 
-    this.ball.sinkIntoHole(hole.holePosition);
     this.putter.setActive(false);
     this.setState(GameState.HOLE_COMPLETE);
     this.holeTransitionTimer = 3.0;
+  }
+
+  // Skip hole transition timer (XR controller A/trigger press)
+  skipToNextHole() {
+    if (this.state !== GameState.HOLE_COMPLETE) return;
+    this.holeTransitionTimer = 0;
+    this.nextHole();
   }
 
   nextHole() {
@@ -215,12 +241,14 @@ export class GameManager {
   getScoreName(strokes: number, par: number): string {
     const diff = strokes - par;
     if (strokes === 1) return "HOLE IN ONE!";
+    if (strokes >= MAX_STROKES_PER_HOLE) return "MAX STROKES";
     if (diff <= -3) return "Albatross";
     if (diff === -2) return "Eagle";
     if (diff === -1) return "Birdie";
     if (diff === 0) return "Par";
     if (diff === 1) return "Bogey";
     if (diff === 2) return "Double Bogey";
+    if (diff === 3) return "Triple Bogey";
     return `+${diff}`;
   }
 

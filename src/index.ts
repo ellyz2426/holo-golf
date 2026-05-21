@@ -1,5 +1,7 @@
 /**
- * Holo Golf VR — Main Entry Point
+ * Holo Golf VR — Main Entry Point (Round 3 Overhaul)
+ * Wires all systems together with course-specific theming, XR→browser camera sync,
+ * and integrated environment theme switching.
  */
 import {
   World,
@@ -128,18 +130,26 @@ async function main() {
   const xrInput = new XRInputHandler(world, putter, game, ui);
   const browserInput = new BrowserInputHandler(world, putter, game, ball, ui, container);
 
+  // Wire XR camera orbit into browser input system
+  browserInput.xrInput = xrInput;
+
   // Achievements
   const achievements = new AchievementTracker();
   const banner = new HoleBanner();
   const stats = new StatsTracker();
 
-  // Hook achievements into game events
+  // Hook state changes for environment theming + achievements
   game.onStateChange((state) => {
     if (state === GameState.AIMING) {
       const hole = game.getCurrentHole();
       if (hole && game.currentStrokes === 0) {
         banner.show(hole.index + 1, hole.name, hole.par);
       }
+    }
+    if (state === GameState.PLAYING) {
+      // Switch environment theme when starting a course
+      env.applyTheme(game.currentCourseIndex);
+      effects.setCourseIndex(game.currentCourseIndex);
     }
     if (state === GameState.HOLE_COMPLETE) {
       const hole = game.getCurrentHole();
@@ -161,19 +171,10 @@ async function main() {
   // Main update loop
   let lastTime = performance.now();
 
-  const onUpdate = (world as any).onUpdate?.bind(world) ?? (world as any).update?.bind(world);
   const registerUpdate = (fn: () => void) => {
     if ((world as any).onUpdate) {
       (world as any).onUpdate(fn);
-    } else if ((world as any).update) {
-      // Fallback: use requestAnimationFrame loop
-      const loop = () => {
-        fn();
-        requestAnimationFrame(loop);
-      };
-      requestAnimationFrame(loop);
     } else {
-      // Last resort: direct rAF
       const loop = () => {
         fn();
         requestAnimationFrame(loop);
