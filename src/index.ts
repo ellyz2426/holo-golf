@@ -45,6 +45,7 @@ import { StatsTracker } from "./stats";
 import { MiniMap } from "./minimap";
 import { PracticeMode } from "./practice";
 import { ToastManager } from "./toast";
+import { ScanlineOverlay, CameraShake, SlowMotionController, StreakTracker } from "./postfx";
 
 const container = document.getElementById("scene-container") as HTMLDivElement;
 
@@ -142,12 +143,19 @@ async function main() {
     toast.showOutOfBounds();
     hud.flashPenalty();
     game.handleBallOOB();
+    cameraShake.trigger(0.3, 6);
+  };
+
+  // Wire ball bounce callback for camera shake
+  ball.onBounce = (intensity: number) => {
+    cameraShake.trigger(intensity, 10);
   };
 
   // Wire water hazard callback
   game.onWaterHazard = () => {
     toast.showWaterHazard();
     hud.flashPenalty();
+    cameraShake.trigger(0.2, 6);
   };
 
   // Achievements
@@ -157,6 +165,13 @@ async function main() {
   const minimap = new MiniMap(game, ball);
   const practice = new PracticeMode(game, audio);
   const toast = new ToastManager();
+  const scanlines = new ScanlineOverlay();
+  const cameraShake = new CameraShake();
+  const slowMo = new SlowMotionController();
+  const streakTracker = new StreakTracker();
+
+  // Start rolling sound system (will be silent until ball moves)
+  audio.startRolling();
 
   // Wire practice mode into UI
   ui.practiceMode = practice;
@@ -174,6 +189,7 @@ async function main() {
       env.applyTheme(game.currentCourseIndex);
       effects.setCourseIndex(game.currentCourseIndex);
       ball.setCourseTheme(game.currentCourseIndex);
+      streakTracker.reset();
     }
     if (state === GameState.HOLE_COMPLETE) {
       const hole = game.getCurrentHole();
@@ -181,12 +197,38 @@ async function main() {
         achievements.checkHole(game.currentStrokes, hole.par);
         stats.recordHole(game.currentStrokes, hole.par);
 
+        // Distinct score SFX based on performance
+        const diff = game.currentStrokes - hole.par;
+        if (game.currentStrokes === 1) {
+          // hole-in-one handled by game.ts
+        } else if (diff <= -2) {
+          audio.playEagle();
+        } else if (diff === -1) {
+          audio.playBirdie();
+        } else if (diff === 0) {
+          audio.playParScore();
+        } else if (diff >= 1) {
+          audio.playBogey();
+        }
+
+        // Streak tracking
+        const streakMsg = streakTracker.recordHole(game.currentStrokes, hole.par);
+        if (streakMsg) {
+          toast.show(streakMsg, "#ffaa00", "🔥", 3.0);
+          audio.playStreakChime(streakTracker.state.consecutive);
+        }
+
         // Show score name toast
         const scoreName = game.getScoreName(game.currentStrokes, hole.par);
         if (game.currentStrokes === 1) {
           toast.show("HOLE IN ONE!", "#ffff00", "⭐", 3.0);
         } else if (game.currentStrokes <= hole.par) {
           toast.show(scoreName, "#00ff88", "✓");
+        }
+
+        // Camera shake for dramatic moments
+        if (game.currentStrokes === 1) {
+          cameraShake.trigger(0.5, 5);
         }
       }
     }
@@ -230,20 +272,24 @@ async function main() {
 
   registerUpdate(() => {
     const now = performance.now();
-    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    let dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
 
-    // Update game systems
-    game.update(dt);
-    ball.update(dt);
-    putter.update(dt, world);
-    courseManager.updateObstacles(dt);
-    effects.update(dt);
-    hud.update(dt);
-    ui.update(dt);
-    env.update(dt);
+    // Apply slow motion time scale
+    const timeScale = slowMo.update(dt);
+    const gameDt = dt * timeScale;
 
-    // Input
+    // Update game systems with time-scaled dt
+    game.update(gameDt);
+    ball.update(gameDt);
+    putter.update(gameDt, world);
+    courseManager.updateObstacles(gameDt);
+    effects.update(gameDt);
+    hud.update(gameDt);
+    ui.update(gameDt);
+    env.update(gameDt);
+
+    // Input (always real-time dt)
     if (xrAvailable) {
       xrInput.update(dt);
     }
@@ -252,6 +298,36 @@ async function main() {
     banner.update(dt);
     minimap.update(dt);
     toast.update(dt);
+    streakTracker.update(dt);
+
+    // Rolling ball sound — update volume based on ball speed
+    const ballSpeed = ball.velocity.length();
+    if (ballSpeed > 0.1 && ball.isActive && !ball.isStopped()) {
+      audio.updateRolling(ballSpeed);
+    } else {
+      audio.updateRolling(0);
+    }
+
+    // Slow-mo trigger when ball is close to hole and moving slowly
+    if (
+      game.state === GameState.BALL_MOVING &&
+      ball.isActive &&
+      !ball.isStopped()
+    ) {
+      const hole = game.getCurrentHole();
+      if (hole) {
+        const dist = ball.position.distanceTo(hole.holePosition);
+        if (dist < 0.3 && ballSpeed < 2.0 && ballSpeed > 0.1) {
+          slowMo.trigger(0.4, 1.0);
+        }
+      }
+    }
+
+    // Apply camera shake offset
+    const shakeOffset = cameraShake.update(dt);
+    if (cameraShake.isShaking) {
+      browserInput.applyCameraShake(shakeOffset.x, shakeOffset.y, shakeOffset.z);
+    }
   });
 
   loadingScreen.setProgress(100, "Welcome to Holo Golf!");

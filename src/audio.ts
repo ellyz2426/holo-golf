@@ -1,7 +1,8 @@
 /**
- * Holo Golf VR — Audio Manager (Round 3 Overhaul)
+ * Holo Golf VR — Audio Manager (Round 5 Overhaul)
  * Procedural audio using Web Audio API for all game sounds.
- * New: course-specific ambient music, stroke limit sound, enhanced effects.
+ * New: rolling ball sound, distinct score SFX (eagle/birdie/par/bogey),
+ * gravity well hum, speed boost whoosh, camera shake audio cue.
  */
 
 // Course ambient configurations
@@ -342,6 +343,162 @@ export class AudioManager {
     for (let i = 0; i < 8; i++) {
       const freq = 2000 + Math.random() * 4000;
       this.playTone(freq, 0.05, 0.1, "sine", i * 0.03 + Math.random() * 0.02);
+    }
+  }
+
+  // === Rolling ball sound (continuous while moving) ===
+
+  private rollingSource: AudioBufferSourceNode | null = null;
+  private rollingGain: GainNode | null = null;
+  private rollingFilter: BiquadFilterNode | null = null;
+
+  startRolling() {
+    if (!this.initialized || this.rollingSource) return;
+    const now = this.ctx.currentTime;
+
+    // Create looping noise buffer for rolling sound
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.5);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    // Brownian noise (low-frequency rumble)
+    let last = 0;
+    for (let i = 0; i < bufferSize; i++) {
+      const white = Math.random() * 2 - 1;
+      last = (last + 0.02 * white) / 1.02;
+      data[i] = last * 3.5;
+    }
+
+    this.rollingSource = this.ctx.createBufferSource();
+    this.rollingSource.buffer = buffer;
+    this.rollingSource.loop = true;
+
+    this.rollingFilter = this.ctx.createBiquadFilter();
+    this.rollingFilter.type = "bandpass";
+    this.rollingFilter.frequency.setValueAtTime(200, now);
+    this.rollingFilter.Q.setValueAtTime(0.8, now);
+
+    this.rollingGain = this.ctx.createGain();
+    this.rollingGain.gain.setValueAtTime(0, now);
+
+    this.rollingSource.connect(this.rollingFilter);
+    this.rollingFilter.connect(this.rollingGain);
+    this.rollingGain.connect(this.sfxGain);
+    this.rollingSource.start(now);
+  }
+
+  updateRolling(speed: number) {
+    if (!this.rollingGain || !this.rollingFilter) return;
+    const now = this.ctx.currentTime;
+    // Volume proportional to speed, capped
+    const vol = Math.min(speed * 0.06, 0.15);
+    this.rollingGain.gain.setTargetAtTime(vol, now, 0.05);
+    // Higher pitch at higher speed
+    const freq = 150 + speed * 80;
+    this.rollingFilter.frequency.setTargetAtTime(Math.min(freq, 800), now, 0.05);
+  }
+
+  stopRolling() {
+    if (this.rollingGain) {
+      const now = this.ctx.currentTime;
+      this.rollingGain.gain.setTargetAtTime(0, now, 0.1);
+    }
+    setTimeout(() => {
+      try { this.rollingSource?.stop(); } catch {}
+      this.rollingSource = null;
+      this.rollingGain = null;
+      this.rollingFilter = null;
+    }, 200);
+  }
+
+  // === Distinct score SFX ===
+
+  playEagle() {
+    // Dramatic ascending arpeggio with shimmer
+    const notes = [330, 440, 554, 659, 880, 1047];
+    notes.forEach((freq, i) => {
+      this.playTone(freq, 0.35, 0.3, "triangle", i * 0.08);
+    });
+    setTimeout(() => this.playSparkle(), 400);
+    setTimeout(() => this.playSparkle(), 600);
+  }
+
+  playBirdie() {
+    // Bright chirpy ascending pattern
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((freq, i) => {
+      this.playTone(freq, 0.2, 0.25, "triangle", i * 0.07);
+    });
+    this.playTone(1047, 0.3, 0.15, "sine", 0.35);
+  }
+
+  playParScore() {
+    // Clean satisfying two-tone confirmation
+    this.playTone(523, 0.15, 0.2, "triangle");
+    this.playTone(659, 0.2, 0.25, "triangle", 0.08);
+  }
+
+  playBogey() {
+    // Slightly disappointed descending tone
+    this.playTone(440, 0.2, 0.15, "sine");
+    this.playTone(349, 0.25, 0.15, "sine", 0.12);
+  }
+
+  // === New obstacle SFX ===
+
+  playGravityWellPull() {
+    // Eerie warping tone
+    if (!this.initialized) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(300, now);
+    osc.frequency.exponentialRampToValueAtTime(150, now + 0.3);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+    osc.connect(gain);
+    gain.connect(this.sfxGain);
+    osc.start(now);
+    osc.stop(now + 0.31);
+  }
+
+  playSpeedBoost() {
+    // Whoosh ascending
+    if (!this.initialized) return;
+    const now = this.ctx.currentTime;
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.25);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      const env = Math.sin((i / bufferSize) * Math.PI);
+      data[i] = (Math.random() * 2 - 1) * env * 0.4;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(500, now);
+    filter.frequency.exponentialRampToValueAtTime(3000, now + 0.2);
+    filter.Q.setValueAtTime(2, now);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.25, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+    src.start(now);
+
+    // Plus an ascending tone
+    this.playTone(400, 0.12, 0.15, "sine");
+    this.playTone(800, 0.1, 0.12, "sine", 0.06);
+    this.playTone(1200, 0.08, 0.1, "sine", 0.1);
+  }
+
+  playStreakChime(streakCount: number) {
+    // Escalating chime based on streak length
+    const baseFreq = 700 + streakCount * 100;
+    for (let i = 0; i < Math.min(streakCount, 6); i++) {
+      this.playTone(baseFreq + i * 150, 0.15, 0.2, "triangle", i * 0.06);
     }
   }
 

@@ -44,6 +44,16 @@ import {
   isInWaterHazard,
   WaterHazard,
 } from "./waterhazard";
+import {
+  createGravityWell,
+  updateGravityWell,
+  getGravityWellForce,
+  GravityWell,
+  createSpeedBoostPad,
+  updateSpeedBoostPad,
+  checkSpeedBoost,
+  SpeedBoostPad,
+} from "./gravitywell";
 
 export interface WallDef {
   normal: Vector3;
@@ -85,7 +95,7 @@ export interface ObstacleDef {
 }
 
 export interface SpecialObstacleDef {
-  type: "teleporter" | "wind_zone" | "ice_surface" | "water_hazard";
+  type: "teleporter" | "wind_zone" | "ice_surface" | "water_hazard" | "gravity_well" | "speed_boost";
   position: Vector3;
   params: Record<string, any>;
 }
@@ -113,6 +123,8 @@ export class CourseManager {
   windZones: WindZone[] = [];
   iceSurfaces: IceSurface[] = [];
   waterHazards: WaterHazard[] = [];
+  gravityWells: GravityWell[] = [];
+  speedBoosts: SpeedBoostPad[] = [];
 
   private teeMarker: Group | null = null;
   private holeCupBeacon: Mesh | null = null;
@@ -143,6 +155,8 @@ export class CourseManager {
     this.windZones = [];
     this.iceSurfaces = [];
     this.waterHazards = [];
+    this.gravityWells = [];
+    this.speedBoosts = [];
     this.teeMarker = null;
     this.holeCupBeacon = null;
     this.holeCupRim = null;
@@ -236,6 +250,25 @@ export class CourseManager {
         this.waterHazards.push(water);
         break;
       }
+      case "gravity_well": {
+        const gwRadius = special.params.radius || 0.5;
+        const gwStrength = special.params.strength || 3.0;
+        const gwColor = special.params.color || 0xff44aa;
+        const well = createGravityWell(special.position, gwRadius, gwStrength, gwColor);
+        this.holeGroup.add(well.group);
+        this.gravityWells.push(well);
+        break;
+      }
+      case "speed_boost": {
+        const sbDir = special.params.direction as Vector3 || new Vector3(0, 0, -1);
+        const sbForce = special.params.boostForce || 5.0;
+        const sbSize = special.params.size as Vector3 || new Vector3(0.3, 0.01, 0.5);
+        const sbColor = special.params.color || 0x44ff88;
+        const pad = createSpeedBoostPad(special.position, sbDir, sbForce, sbSize, sbColor);
+        this.holeGroup.add(pad.group);
+        this.speedBoosts.push(pad);
+        break;
+      }
     }
   }
 
@@ -263,6 +296,16 @@ export class CourseManager {
     // Animate water hazards
     for (const water of this.waterHazards) {
       updateWaterHazard(water, dt);
+    }
+
+    // Animate gravity wells
+    for (const well of this.gravityWells) {
+      updateGravityWell(well, dt);
+    }
+
+    // Animate speed boost pads
+    for (const pad of this.speedBoosts) {
+      updateSpeedBoostPad(pad, dt);
     }
 
     // Animate tee marker pulse
@@ -297,12 +340,16 @@ export class CourseManager {
     windForce: Vector3;
     frictionOverride: number | null;
     inWater: boolean;
+    gravityForce: Vector3;
+    speedBoost: Vector3 | null;
   } {
     let teleported = false;
     let teleportTarget: Vector3 | undefined;
     const windForce = new Vector3();
     let frictionOverride: number | null = null;
     let inWater = false;
+    const gravityForce = new Vector3();
+    let speedBoost: Vector3 | null = null;
 
     // Check teleporters
     for (const tp of this.teleporters) {
@@ -343,7 +390,24 @@ export class CourseManager {
       }
     }
 
-    return { teleported, teleportTarget, windForce, frictionOverride, inWater };
+    // Check gravity wells
+    for (const well of this.gravityWells) {
+      const force = getGravityWellForce(well, ballPos);
+      if (force.lengthSq() > 0) {
+        gravityForce.add(force);
+      }
+    }
+
+    // Check speed boost pads
+    for (const pad of this.speedBoosts) {
+      const boost = checkSpeedBoost(pad, ballPos);
+      if (boost) {
+        speedBoost = boost;
+        break;
+      }
+    }
+
+    return { teleported, teleportTarget, windForce, frictionOverride, inWater, gravityForce, speedBoost };
   }
 
   private createPanel(surf: SurfaceDef): Group {

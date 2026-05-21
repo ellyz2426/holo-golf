@@ -70,6 +70,9 @@ export class BallController {
   // Out-of-bounds callback
   onOutOfBounds: (() => void) | null = null;
 
+  // Wall/bumper bounce callback for camera shake
+  onBounce: ((intensity: number) => void) | null = null;
+
   // Special zone effects
   private windForce = new Vector3();
   private frictionOverride: number | null = null;
@@ -303,6 +306,13 @@ export class BallController {
     // Update mesh
     this.mesh.position.copy(this.position);
 
+    // Ball rotation (spin proportional to velocity)
+    if (speed > 0.01) {
+      const rotSpeed = speed * 4;
+      this.mesh.rotation.x += this.velocity.z * dt * rotSpeed;
+      this.mesh.rotation.z -= this.velocity.x * dt * rotSpeed;
+    }
+
     // Update shadow
     this.shadow.position.set(this.position.x, this.floorY - BALL_RADIUS + 0.003, this.position.z);
     const shadowHeight = Math.max(0, this.position.y - (this.floorY - BALL_RADIUS));
@@ -310,10 +320,12 @@ export class BallController {
     this.shadow.scale.set(shadowScale, 0.02, shadowScale);
     (this.shadow.material as MeshBasicMaterial).opacity = Math.max(0.05, 0.25 - shadowHeight * 0.1);
 
-    // Glow pulse
-    const pulse = 0.12 + Math.sin(performance.now() * 0.004) * 0.05;
-    (this.glowMesh.material as MeshBasicMaterial).opacity = pulse;
-    this.light.intensity = 0.5 + speed * 0.3;
+    // Glow pulse — more intense at higher speeds
+    const basePulse = 0.12 + Math.sin(performance.now() * 0.004) * 0.05;
+    const speedGlow = Math.min(speed * 0.04, 0.2);
+    (this.glowMesh.material as MeshBasicMaterial).opacity = basePulse + speedGlow;
+    this.light.intensity = 0.5 + speed * 0.5;
+    this.light.color.set(speed > 3 ? 0x44ffff : 0x00ffff);
 
     // Update trail (optimized pool)
     this.updateTrail();
@@ -346,6 +358,7 @@ export class BallController {
             this.velocity.sub(wall.normal.clone().multiplyScalar(2 * dot));
             this.velocity.multiplyScalar(WALL_BOUNCE);
             this.audio.playWallBounce(this.velocity.length());
+            if (this.onBounce) this.onBounce(Math.min(this.velocity.length() * 0.1, 0.3));
           }
         }
       }
@@ -381,6 +394,7 @@ export class BallController {
               this.velocity.normalize().multiplyScalar(MAX_VELOCITY);
             }
             this.audio.playBumperHit(this.velocity.length());
+            if (this.onBounce) this.onBounce(Math.min(this.velocity.length() * 0.15, 0.5));
           }
         }
       }

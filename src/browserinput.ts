@@ -41,6 +41,17 @@ export class BrowserInputHandler {
   private lastRightX = 0;
   private lastRightY = 0;
 
+  // Camera shake offset (set externally by index.ts)
+  private shakeX = 0;
+  private shakeY = 0;
+  private shakeZ = 0;
+
+  applyCameraShake(x: number, y: number, z: number) {
+    this.shakeX = x;
+    this.shakeY = y;
+    this.shakeZ = z;
+  }
+
   constructor(
     world: World,
     putter: PutterController,
@@ -217,6 +228,9 @@ export class BrowserInputHandler {
       const z = this.cameraTarget.z + Math.cos(this.cameraAngle) * this.cameraDistance * Math.cos(this.cameraElevation);
 
       cam.position.lerp(new Vector3(x, y, z), dt * 5);
+      cam.position.x += this.shakeX;
+      cam.position.y += this.shakeY;
+      cam.position.z += this.shakeZ;
       cam.lookAt(this.cameraTarget.x, this.cameraTarget.y + 0.1, this.cameraTarget.z);
     }
   }

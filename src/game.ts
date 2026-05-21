@@ -401,6 +401,19 @@ export class GameManager {
       // Wind force
       this.ball.setWindForce(result.windForce);
 
+      // Gravity well force (additive with wind)
+      if (result.gravityForce.lengthSq() > 0) {
+        const combined = result.windForce.clone().add(result.gravityForce);
+        this.ball.setWindForce(combined);
+      }
+
+      // Speed boost
+      if (result.speedBoost) {
+        this.ball.velocity.add(result.speedBoost);
+        this.audio.playSpeedBoost();
+        this.effects.teleportEffect(this.ball.position); // reuse teleport flash
+      }
+
       // Ice friction
       this.ball.setFrictionOverride(result.frictionOverride);
     }

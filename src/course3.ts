@@ -145,7 +145,7 @@ export const COSMIC_ABYSS_COURSE: CourseData = {
       ],
     },
 
-    // Hole 5: "Storm Alley" — Crosswind + bumpers
+    // Hole 5: "Storm Alley" — Crosswind + bumpers + gravity well trap
     {
       index: 4,
       name: "Storm Alley",
@@ -177,6 +177,11 @@ export const COSMIC_ABYSS_COURSE: CourseData = {
             force: 2.5,
             size: new Vector3(1, 0.5, 7),
           },
+        },
+        {
+          type: "gravity_well",
+          position: new Vector3(0, 0, -1),
+          params: { radius: 0.4, strength: 2.5, color: 0xff4488 },
         },
       ],
     },
@@ -217,7 +222,7 @@ export const COSMIC_ABYSS_COURSE: CourseData = {
       ],
     },
 
-    // Hole 7: "Portal Maze" — Multiple teleporters and obstacles
+    // Hole 7: "Portal Maze" — Multiple teleporters, obstacles, and speed boost
     {
       index: 6,
       name: "Portal Maze",
@@ -254,6 +259,16 @@ export const COSMIC_ABYSS_COURSE: CourseData = {
           type: "teleporter",
           position: new Vector3(0.5, 0, -0.5),
           params: { target: new Vector3(1.5, 0.05, -1), color: 0xff8844 },
+        },
+        {
+          type: "speed_boost",
+          position: new Vector3(0, 0, 0),
+          params: {
+            direction: new Vector3(1, 0, 0),
+            boostForce: 4.0,
+            size: new Vector3(0.25, 0.01, 0.4),
+            color: 0x44ff88,
+          },
         },
       ],
     },
@@ -301,7 +316,7 @@ export const COSMIC_ABYSS_COURSE: CourseData = {
       ],
     },
 
-    // Hole 9: "Event Horizon" — The ultimate challenge
+    // Hole 9: "Event Horizon" — The ultimate challenge with gravity well
     {
       index: 8,
       name: "Event Horizon",
@@ -349,6 +364,21 @@ export const COSMIC_ABYSS_COURSE: CourseData = {
             direction: new Vector3(0, 0, 1),
             force: 2.5,
             size: new Vector3(0.8, 0.5, 1.5),
+          },
+        },
+        {
+          type: "gravity_well",
+          position: new Vector3(0, 0, 0),
+          params: { radius: 0.6, strength: 3.5, color: 0xff2200 },
+        },
+        {
+          type: "speed_boost",
+          position: new Vector3(0, 0.15, -2.5),
+          params: {
+            direction: new Vector3(0, 0, -1),
+            boostForce: 3.5,
+            size: new Vector3(0.3, 0.01, 0.3),
+            color: 0xffaa00,
           },
         },
       ],

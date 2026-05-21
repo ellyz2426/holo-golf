@@ -224,7 +224,7 @@ export const QUANTUM_FIELD_COURSE: CourseData = {
       ],
     },
 
-    // Hole 9: "Quantum Nexus" — The ultimate challenge
+    // Hole 9: "Quantum Nexus" — The ultimate challenge with gravity well
     {
       index: 8,
       name: "Quantum Nexus",
@@ -255,6 +255,23 @@ export const QUANTUM_FIELD_COURSE: CourseData = {
         { type: "ring", position: new Vector3(0, 1.0, -4), params: { radius: 0.4, color: 0xff44aa } },
         { type: "orb", position: new Vector3(0, 1.5, -4), params: { radius: 0.1, color: 0xff44aa } },
         { type: "ring", position: new Vector3(0, 0.6, 2), params: { radius: 0.2, color: 0xff2266 } },
+      ],
+      specialObstacles: [
+        {
+          type: "gravity_well",
+          position: new Vector3(0, 0, -0.5),
+          params: { radius: 0.5, strength: 2.5, color: 0xaa44ff },
+        },
+        {
+          type: "speed_boost",
+          position: new Vector3(0, 0.15, -3),
+          params: {
+            direction: new Vector3(0, 0, -1),
+            boostForce: 3.0,
+            size: new Vector3(0.25, 0.01, 0.35),
+            color: 0xff44aa,
+          },
+        },
       ],
     },
   ],
