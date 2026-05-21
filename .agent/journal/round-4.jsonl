@@ -1,0 +1,8 @@
+{"round":4,"event":"round_start","ts":"2026-05-21T21:40:00Z","note":"Starting round 4: pause menu, water hazards, leaderboard, polish"}
+{"round":4,"event":"commit","ts":"2026-05-21T22:00:00Z","sha":"a52e744","msg":"Round 4: Pause menu, water hazards, OOB handling, ball shadow, leaderboard, splash SFX","files_changed":6,"insertions":962}
+{"round":4,"event":"deploy","ts":"2026-05-21T22:01:00Z","target":"gh-pages","note":"Deploy 1 of 3 for round 4"}
+{"round":4,"event":"commit","ts":"2026-05-21T22:08:00Z","sha":"69a79ca","msg":"Round 4.1: Toast notifications, animated markers, course-themed trails, HUD penalty flash","files_changed":5,"insertions":350}
+{"round":4,"event":"deploy","ts":"2026-05-21T22:09:00Z","target":"gh-pages","note":"Deploy 2 of 3 for round 4"}
+{"round":4,"event":"commit","ts":"2026-05-21T22:14:00Z","sha":"6cfdc90","msg":"Round 4 polish: HUD distance-to-hole display, comprehensive README","files_changed":3,"insertions":82}
+{"round":4,"event":"deploy","ts":"2026-05-21T22:15:00Z","target":"gh-pages","note":"Deploy 3 of 3 for round 4"}
+{"round":4,"event":"round_end","ts":"2026-05-21T22:16:00Z","files":27,"lines":7147,"total_minutes":180,"features_added":["Pause menu (ESC/B button)","Water hazards with animated surface","OOB detection with penalty+reset","Ball shadow mesh","Leaderboard system","Toast notifications","Splash SFX","OOB alert SFX","Animated tee marker","Animated hole cup beacon","Course-themed trail colors","HUD penalty flash","Score name toasts","Personal best notification","Distance-to-hole HUD display","Updated README"]}
