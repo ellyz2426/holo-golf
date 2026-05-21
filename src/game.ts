@@ -46,13 +46,14 @@ export class GameManager {
   currentStrokes = 0;
   courseScore: CourseScore;
   bestScores: Map<string, number> = new Map();
+  practiceMode = false;
 
   private world: World;
   courseManager: CourseManager;
   private ball: BallController;
   private putter: PutterController;
   private effects: EffectsManager;
-  private audio: AudioManager;
+  audio: AudioManager;
   private holeTransitionTimer = 0;
   private stateListeners: ((state: GameState) => void)[] = [];
 
@@ -89,6 +90,7 @@ export class GameManager {
     this.currentCourseIndex = courseIndex;
     this.currentHoleIndex = 0;
     this.currentStrokes = 0;
+    this.practiceMode = false;
     const course = this.courseManager.getCourse(courseIndex);
     this.courseScore = this.createEmptyScore(course.name);
 
@@ -96,6 +98,19 @@ export class GameManager {
     this.audio.switchCourseAmbient(courseIndex);
 
     this.loadHole(0);
+    this.setState(GameState.PLAYING);
+  }
+
+  startPracticeHole(courseIndex: number, holeIndex: number) {
+    this.currentCourseIndex = courseIndex;
+    this.currentHoleIndex = holeIndex;
+    this.currentStrokes = 0;
+    this.practiceMode = true;
+    const course = this.courseManager.getCourse(courseIndex);
+    this.courseScore = this.createEmptyScore(course.name + " (Practice)");
+
+    this.audio.switchCourseAmbient(courseIndex);
+    this.loadHole(holeIndex);
     this.setState(GameState.PLAYING);
   }
 
@@ -201,6 +216,11 @@ export class GameManager {
   }
 
   nextHole() {
+    if (this.practiceMode) {
+      // In practice mode, replay the same hole or go to complete
+      this.completeCourse();
+      return;
+    }
     const course = this.courseManager.getCourse(this.currentCourseIndex);
     if (this.currentHoleIndex < course.holes.length - 1) {
       this.loadHole(this.currentHoleIndex + 1);

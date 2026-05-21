@@ -7,6 +7,7 @@
 import { World } from "@iwsdk/core";
 import { GameManager, GameState } from "./game";
 import { AudioManager } from "./audio";
+import { PracticeMode } from "./practice";
 
 // Course color themes
 const COURSE_THEMES = [
@@ -26,6 +27,9 @@ export class UIManager {
   private focusIndex = 0;
   private focusableCount = 0;
   private focusableIds: string[] = [];
+
+  // Practice mode
+  practiceMode: PracticeMode | null = null;
 
   constructor(world: World, game: GameManager, audio: AudioManager) {
     this.world = world;
@@ -130,6 +134,9 @@ export class UIManager {
               <div style="font-size: 11px; color: #445566; margin-top: 4px;">
                 ${this.getBestScoreText(i)}
               </div>
+              <div id="practice-btn-${i}" style="font-size: 10px; color: #44ff88; margin-top: 8px; cursor: pointer; letter-spacing: 1px;">
+                🏋 PRACTICE
+              </div>
             </div>
           `).join('')}
         </div>
@@ -145,10 +152,19 @@ export class UIManager {
     `;
 
     for (let i = 0; i < 3; i++) {
-      this.overlay.querySelector(`#course-${i}`)?.addEventListener("click", () => {
+      this.overlay.querySelector(`#course-${i}`)?.addEventListener("click", (e) => {
+        // Ignore if clicking the practice button
+        if ((e.target as HTMLElement).id?.startsWith("practice-btn")) return;
         this.audio.playMenuSelect();
         this.hideUI();
         this.game.startCourse(i);
+      });
+      this.overlay.querySelector(`#practice-btn-${i}`)?.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.audio.playMenuSelect();
+        if (this.practiceMode) {
+          this.practiceMode.show(i);
+        }
       });
     }
 

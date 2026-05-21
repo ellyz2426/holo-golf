@@ -42,6 +42,8 @@ import { ControlsHelp } from "./controls";
 import { AchievementTracker } from "./achievements";
 import { HoleBanner } from "./banner";
 import { StatsTracker } from "./stats";
+import { MiniMap } from "./minimap";
+import { PracticeMode } from "./practice";
 
 const container = document.getElementById("scene-container") as HTMLDivElement;
 
@@ -137,6 +139,11 @@ async function main() {
   const achievements = new AchievementTracker();
   const banner = new HoleBanner();
   const stats = new StatsTracker();
+  const minimap = new MiniMap(game, ball);
+  const practice = new PracticeMode(game, audio);
+
+  // Wire practice mode into UI
+  ui.practiceMode = practice;
 
   // Hook state changes for environment theming + achievements
   game.onStateChange((state) => {
@@ -205,6 +212,7 @@ async function main() {
     browserInput.update(dt);
     achievements.update(dt);
     banner.update(dt);
+    minimap.update(dt);
   });
 
   loadingScreen.setProgress(100, "Welcome to Holo Golf!");
