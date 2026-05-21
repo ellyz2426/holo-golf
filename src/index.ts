@@ -34,6 +34,9 @@ import { XRInputHandler } from "./xrinput";
 import { BrowserInputHandler } from "./browserinput";
 import { createLoadingScreen } from "./loading";
 import { ControlsHelp } from "./controls";
+import { AchievementTracker } from "./achievements";
+import { HoleBanner } from "./banner";
+import { StatsTracker } from "./stats";
 
 const container = document.getElementById("scene-container") as HTMLDivElement;
 
@@ -120,6 +123,34 @@ async function main() {
   const xrInput = new XRInputHandler(world, putter, game, ui);
   const browserInput = new BrowserInputHandler(world, putter, game, ui, container);
 
+  // Achievements
+  const achievements = new AchievementTracker();
+  const banner = new HoleBanner();
+  const stats = new StatsTracker();
+
+  // Hook achievements into game events
+  game.onStateChange((state) => {
+    if (state === GameState.AIMING) {
+      const hole = game.getCurrentHole();
+      if (hole && game.currentStrokes === 0) {
+        banner.show(hole.index + 1, hole.name, hole.par);
+      }
+    }
+    if (state === GameState.HOLE_COMPLETE) {
+      const hole = game.getCurrentHole();
+      if (hole) {
+        achievements.checkHole(game.currentStrokes, hole.par);
+        stats.recordHole(game.currentStrokes, hole.par);
+      }
+    }
+    if (state === GameState.COURSE_COMPLETE) {
+      const score = game.courseScore;
+      const totalPar = score.holes.reduce((s, h) => s + h.par, 0);
+      achievements.checkCourse(score.totalStrokes, totalPar, score.holes);
+      stats.recordRound(score.totalStrokes);
+    }
+  });
+
   loadingScreen.setProgress(85, "Ready...");
 
   // Main update loop
@@ -145,6 +176,8 @@ async function main() {
       xrInput.update(dt);
     }
     browserInput.update(dt);
+    achievements.update(dt);
+    banner.update(dt);
   });
 
   loadingScreen.setProgress(100, "Welcome to Holo Golf!");
