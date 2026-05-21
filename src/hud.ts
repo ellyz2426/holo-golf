@@ -14,8 +14,10 @@ import {
   AdditiveBlending,
   BoxGeometry,
   CanvasTexture,
+  Vector3,
 } from "@iwsdk/core";
 import { GameManager, GameState, MAX_STROKES_PER_HOLE } from "./game";
+import { BallController } from "./ball";
 
 // Course theme colors
 const COURSE_COLORS = [
@@ -27,6 +29,7 @@ const COURSE_COLORS = [
 export class HUDManager {
   private world: World;
   private game: GameManager;
+  private ball: BallController | null = null;
   private hudGroup: Group;
 
   private canvas: HTMLCanvasElement;
@@ -69,13 +72,20 @@ export class HUDManager {
     });
   }
 
+  setBall(ball: BallController) {
+    this.ball = ball;
+  }
+
   update(dt: number) {
     if (this.penaltyFlashTimer > 0) {
       this.penaltyFlashTimer -= dt;
       this.dirty = true;
     }
 
-    if (this.dirty || this.game.state !== this.lastState || this.game.currentStrokes !== this.lastStrokes) {
+    // Always redraw during ball movement for distance display
+    const isMoving = this.game.state === GameState.BALL_MOVING;
+
+    if (this.dirty || isMoving || this.game.state !== this.lastState || this.game.currentStrokes !== this.lastStrokes) {
       this.redraw();
       this.lastState = this.game.state;
       this.lastStrokes = this.game.currentStrokes;
@@ -180,6 +190,16 @@ export class HUDManager {
       ctx.font = "16px monospace";
       ctx.textAlign = "right";
       ctx.fillText(`TOTAL: ${totalStrokes}`, w - 25, 140);
+
+      // Distance to hole
+      if (this.ball && this.ball.isActive) {
+        const dist = this.ball.position.distanceTo(hole.holePosition);
+        const distM = dist.toFixed(1);
+        ctx.fillStyle = "#6688aa";
+        ctx.font = "14px monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(`📏 ${distM}m to hole`, w - 25, 165);
+      }
 
       // Mini scorecard (bottom)
       this.drawMiniScorecard(ctx, w, h, theme);

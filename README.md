@@ -19,8 +19,8 @@ Every game state responds to XR controllers:
 | Button | Action |
 |--------|--------|
 | **Trigger** | Putt / Select menu item |
-| **A Button** | Confirm / Skip to next hole |
-| **B Button** | Reset ball / Go back in menus |
+| **A Button** | Reset ball / Skip to next hole |
+| **B Button** | Pause game / Go back in menus |
 | **Grip** | Power boost while held |
 | **Left Stick** | Orbit camera around ball |
 | **Right Stick** | Navigate menu items |
@@ -34,6 +34,8 @@ Plus swing-to-putt: physically swing the controller near the ball to hit it.
 - **Scroll** to zoom
 - **R** to reset ball
 - **TAB** for scorecard
+- **L** for leaderboard
+- **ESC** to pause / resume
 - **Space/Enter** to skip to next hole
 
 ### 🎨 Course-Specific Theming
@@ -46,16 +48,34 @@ Each course has unique:
 - Point lighting accents
 - Background music (distinct synthesizer drone per course)
 - Particle effect palettes
+- Ball trail color gradients
 
 ### 🏋️ Practice Mode
 
 Select any hole from any course to practice individually. Best practice scores are saved separately from course scores.
 
+### 🏆 Leaderboard
+
+- **Personal best scores** per course with timestamps
+- **Top 10** tracked per course
+- **Medal indicators** (🥇🥈🥉) for top scores
+- **New record toasts** when you beat your personal best
+- Accessible from title screen or with `L` key
+
+### ⏸️ Pause Menu
+
+Pause mid-round (ESC or B button in VR) with:
+- Current stroke count and course total
+- Resume or quit to menu
+- Full XR controller navigation
+
 ### 📊 Gameplay
 
 - **10-stroke limit** per hole (HUD turns red as you approach)
 - **5 obstacle types**: walls, ramps, bumpers, windmills, spinners
-- **3 special mechanics**: teleporter warps, wind zones, ice surfaces
+- **4 special mechanics**: teleporter warps, wind zones, ice surfaces, **water hazards**
+- **Ball out-of-bounds** detection with penalty stroke + tee reset
+- **Ball shadow** for depth perception (scales with height)
 - **Scoring**: Hole-in-one, Albatross, Eagle, Birdie, Par, Bogey, etc.
 - **12 achievements** with persistent tracking
 - **Statistics**: rounds played, holes completed, scoring breakdown
@@ -66,8 +86,8 @@ Select any hole from any course to practice individually. Best practice scores a
 Real-time overhead mini-map shows:
 - Hole layout with surfaces and walls
 - Ball position (cyan dot with glow)
-- Tee marker (green)
-- Hole/cup marker (pulsing yellow)
+- Tee marker (green, pulsing)
+- Hole/cup marker (pulsing yellow beacon)
 - Obstacle positions
 
 ### 🔊 Procedural Audio
@@ -79,15 +99,23 @@ All audio is generated in real-time via Web Audio API:
 - Hole-in-one fanfare with sparkle cascade
 - Under-par celebratory chords
 - Stroke limit descending "wah-wah"
+- **Water splash** (filtered noise + bubbling tones)
+- **OOB alert** (descending square wave)
 - Menu hover and select tones
 
 ### ✨ Visual Effects
 
-- Ball trail with color gradient (object-pooled)
+- Course-themed ball trail with color gradient (object-pooled)
+- Ball shadow (scales with ball height)
 - Particle bursts on hole completion
 - Expanding rings and light columns for hole-in-one
 - Pulsing celebration orbs
 - Teleport purple particle spirals
+- **Water hazard splash effect** (blue particle burst)
+- **Animated tee marker** (pulsing glow)
+- **Animated hole cup beacon** (pulsing beam + rim)
+- **Toast notifications** for OOB, water hazard, hole-in-one, new records
+- **HUD penalty flash** on OOB/water hazard
 - Course-themed particle palettes
 
 ## Tech Stack
@@ -122,29 +150,32 @@ git push --force "https://github.com/ellyz2426/holo-golf.git" HEAD:gh-pages
 
 ```
 src/
-├── index.ts           # Entry point, wires all systems
-├── game.ts            # Central state machine + scoring
-├── ball.ts            # Ball physics, trails, zone effects
-├── putter.ts          # Putter controller (XR swing + browser aim)
-├── course.ts          # Course 1 data + geometry builder
-├── course2.ts         # Course 2: Quantum Field
-├── course3.ts         # Course 3: Cosmic Abyss
-├── xrinput.ts         # Full XR controller handler
-├── browserinput.ts    # Mouse/keyboard handler
-├── ui.ts              # HTML overlay menus
-├── hud.ts             # Canvas-based in-world HUD
-├── environment.ts     # Holodeck environment + course theming
-├── effects.ts         # Particle effects + celebrations
-├── audio.ts           # Procedural audio synthesis
-├── minimap.ts         # Overhead hole mini-map
-├── practice.ts        # Practice mode (single-hole replay)
-├── scorecard.ts       # Detailed scorecard overlay
-├── powermeter.ts      # Aim power indicator
-├── banner.ts          # Animated hole intro banners
-├── achievements.ts    # 12 achievements with persistence
-├── stats.ts           # Play statistics tracking
-├── controls.ts        # Controls help overlay
-├── loading.ts         # Loading screen
+├── index.ts            # Entry point, wires all systems
+├── game.ts             # Central state machine + scoring
+├── ball.ts             # Ball physics, trails, shadow, zone effects
+├── putter.ts           # Putter controller (XR swing + browser aim)
+├── course.ts           # Course 1 data + geometry builder
+├── course2.ts          # Course 2: Quantum Field
+├── course3.ts          # Course 3: Cosmic Abyss
+├── xrinput.ts          # Full XR controller handler
+├── browserinput.ts     # Mouse/keyboard handler
+├── ui.ts               # HTML overlay menus + pause
+├── hud.ts              # Canvas-based in-world HUD
+├── environment.ts      # Holodeck environment + course theming
+├── effects.ts          # Particle effects + celebrations
+├── audio.ts            # Procedural audio synthesis
+├── minimap.ts          # Overhead hole mini-map
+├── practice.ts         # Practice mode (single-hole replay)
+├── scorecard.ts        # Detailed scorecard overlay
+├── powermeter.ts       # Aim power indicator
+├── banner.ts           # Animated hole intro banners
+├── achievements.ts     # 12 achievements with persistence
+├── stats.ts            # Play statistics tracking
+├── controls.ts         # Controls help overlay
+├── loading.ts          # Loading screen
+├── leaderboard.ts      # Personal best leaderboard system
+├── toast.ts            # Toast notification system
+├── waterhazard.ts      # Water hazard obstacle type
 └── specialobstacles.ts # Teleporters, wind zones, ice
 ```
 

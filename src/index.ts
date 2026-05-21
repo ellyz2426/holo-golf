@@ -123,6 +123,7 @@ async function main() {
 
   // HUD
   const hud = new HUDManager(world, game);
+  hud.setBall(ball);
 
   // UI
   const ui = new UIManager(world, game, audio);
