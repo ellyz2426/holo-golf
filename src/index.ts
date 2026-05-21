@@ -33,6 +33,7 @@ import { EnvironmentBuilder } from "./environment";
 import { XRInputHandler } from "./xrinput";
 import { BrowserInputHandler } from "./browserinput";
 import { createLoadingScreen } from "./loading";
+import { ControlsHelp } from "./controls";
 
 const container = document.getElementById("scene-container") as HTMLDivElement;
 
@@ -133,6 +134,7 @@ async function main() {
     game.update(dt);
     ball.update(dt);
     putter.update(dt, world);
+    courseManager.updateObstacles(dt);
     effects.update(dt);
     hud.update(dt);
     ui.update(dt);
@@ -151,6 +153,7 @@ async function main() {
     game.setState(GameState.TITLE);
     ui.showTitle();
     audio.playAmbient();
+    new ControlsHelp();
   }, 600);
 }
 
