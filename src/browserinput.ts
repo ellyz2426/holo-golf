@@ -13,6 +13,7 @@ import { UIManager } from "./ui";
 import { XRInputHandler } from "./xrinput";
 import { PowerMeter } from "./powermeter";
 import { ScorecardOverlay } from "./scorecard";
+import { LeaderboardManager } from "./leaderboard";
 
 const MAX_POWER = 10.0;
 
@@ -26,6 +27,7 @@ export class BrowserInputHandler {
   private mouseDown = false;
   private powerMeter: PowerMeter;
   private scorecard: ScorecardOverlay;
+  leaderboard: LeaderboardManager;
 
   // XR input reference for camera orbit sync
   xrInput: XRInputHandler | null = null;
@@ -55,8 +57,14 @@ export class BrowserInputHandler {
     this.container = container;
     this.powerMeter = new PowerMeter();
     this.scorecard = new ScorecardOverlay(game);
+    this.leaderboard = new LeaderboardManager();
 
     this.setupListeners();
+
+    // Listen for leaderboard show event from UI
+    window.addEventListener("holo-golf-show-leaderboard", () => {
+      this.leaderboard.show();
+    });
   }
 
   private setupListeners() {
@@ -124,8 +132,19 @@ export class BrowserInputHandler {
         case "escape":
           if (this.scorecard.isVisible()) {
             this.scorecard.hide();
+          } else if (this.leaderboard.isVisible()) {
+            this.leaderboard.hide();
+          } else if (this.game.isPaused()) {
+            this.ui.hideUI();
+            this.game.resume();
           } else if (this.ui.isVisible()) {
             this.ui.showTitle();
+          } else if (
+            this.game.state === GameState.AIMING ||
+            this.game.state === GameState.BALL_MOVING ||
+            this.game.state === GameState.PLAYING
+          ) {
+            this.game.pause();
           }
           break;
         case "enter":
@@ -134,6 +153,15 @@ export class BrowserInputHandler {
             this.game.skipToNextHole();
           } else if (this.game.state === GameState.COURSE_COMPLETE) {
             this.ui.showCourseComplete();
+          }
+          break;
+        case "l":
+          if (this.ui.isVisible() || this.game.state === GameState.TITLE || this.game.state === GameState.COURSE_SELECT) {
+            if (this.leaderboard.isVisible()) {
+              this.leaderboard.hide();
+            } else {
+              this.leaderboard.show();
+            }
           }
           break;
       }

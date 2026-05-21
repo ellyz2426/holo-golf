@@ -48,14 +48,17 @@ export class UIManager {
       if (state === GameState.COURSE_COMPLETE) {
         this.showCourseComplete();
       }
+      if (state === GameState.PAUSED) {
+        this.showPauseMenu();
+      }
     });
   }
 
   showTitle() {
     this.currentScreen = "title";
-    this.focusableIds = ["btn-play", "btn-settings"];
+    this.focusableIds = ["btn-play", "btn-leaderboard", "btn-settings"];
     this.focusIndex = 0;
-    this.focusableCount = 2;
+    this.focusableCount = 3;
 
     this.overlay.innerHTML = `
       <div style="
@@ -81,7 +84,12 @@ export class UIManager {
             </button>
           </div>
           <div style="margin-top: 15px;">
-            <button id="btn-settings" style="${this.buttonStyle('#ff4488', '#cc2266')}" data-focus="1">
+            <button id="btn-leaderboard" style="${this.buttonStyle('#ffaa00', '#cc8800')}" data-focus="1">
+              🏆 LEADERBOARD
+            </button>
+          </div>
+          <div style="margin-top: 15px;">
+            <button id="btn-settings" style="${this.buttonStyle('#ff4488', '#cc2266')}" data-focus="2">
               ⚙ SETTINGS
             </button>
           </div>
@@ -90,7 +98,7 @@ export class UIManager {
           ">
             MOUSE: CLICK & DRAG TO AIM AND PUTT<br>
             VR: SWING CONTROLLER OR PRESS TRIGGER<br>
-            <span style="color: #224455; font-size: 11px;">GRIP = POWER BOOST · LEFT STICK = CAMERA</span>
+            <span style="color: #224455; font-size: 11px;">GRIP = POWER BOOST · LEFT STICK = CAMERA · ESC = PAUSE</span>
           </div>
         </div>
       </div>
@@ -99,6 +107,12 @@ export class UIManager {
     this.overlay.querySelector("#btn-play")?.addEventListener("click", () => {
       this.audio.playMenuSelect();
       this.showCourseSelect();
+    });
+
+    this.overlay.querySelector("#btn-leaderboard")?.addEventListener("click", () => {
+      this.audio.playMenuSelect();
+      // Dispatch a custom event that browserinput listens for
+      window.dispatchEvent(new CustomEvent("holo-golf-show-leaderboard"));
     });
 
     this.overlay.querySelector("#btn-settings")?.addEventListener("click", () => {
@@ -305,12 +319,82 @@ export class UIManager {
     this.updateFocusHighlight();
   }
 
+  showPauseMenu() {
+    this.currentScreen = "paused";
+    this.focusableIds = ["btn-resume", "btn-quit"];
+    this.focusIndex = 0;
+    this.focusableCount = 2;
+
+    const theme = COURSE_THEMES[this.game.currentCourseIndex] || COURSE_THEMES[0];
+
+    this.overlay.innerHTML = `
+      <div style="
+        display: flex; flex-direction: column; align-items: center; justify-content: center;
+        width: 100%; height: 100%; pointer-events: auto;
+        background: radial-gradient(ellipse at center, rgba(0,15,30,0.92) 0%, rgba(0,0,0,0.96) 100%);
+      ">
+        <h2 style="color: ${theme.primary}; font-size: 42px; letter-spacing: 6px; margin-bottom: 10px;
+          text-shadow: 0 0 20px ${theme.primary};">
+          ⏸ PAUSED
+        </h2>
+
+        <div style="margin-top: 10px; font-size: 13px; color: #445566; letter-spacing: 2px;">
+          ${theme.name.toUpperCase()} · HOLE ${this.game.currentHoleIndex + 1}
+        </div>
+
+        <div style="
+          margin-top: 20px; padding: 15px 30px;
+          border: 1px solid #223344; background: rgba(0,10,20,0.5);
+          text-align: center;
+        ">
+          <div style="font-size: 14px; color: #6688aa;">
+            Strokes: <span style="color: #ffffff; font-weight: bold;">${this.game.currentStrokes}</span> / ${10}
+          </div>
+          <div style="font-size: 12px; color: #445566; margin-top: 4px;">
+            Course total: ${this.game.courseScore.totalStrokes + this.game.currentStrokes}
+          </div>
+        </div>
+
+        <div style="margin-top: 35px;">
+          <button id="btn-resume" style="${this.buttonStyle(theme.primary, theme.secondary)}" data-focus="0">
+            ▶ RESUME
+          </button>
+        </div>
+        <div style="margin-top: 15px;">
+          <button id="btn-quit" style="${this.buttonStyle('#ff4488', '#cc2266')}" data-focus="1">
+            ✕ QUIT TO MENU
+          </button>
+        </div>
+
+        <div style="margin-top: 30px; color: #223344; font-size: 11px; letter-spacing: 1px;">
+          ESC TO RESUME · VR: B BUTTON
+        </div>
+      </div>
+    `;
+
+    this.overlay.querySelector("#btn-resume")?.addEventListener("click", () => {
+      this.audio.playMenuSelect();
+      this.hideUI();
+      this.game.resume();
+    });
+
+    this.overlay.querySelector("#btn-quit")?.addEventListener("click", () => {
+      this.audio.playMenuSelect();
+      this.game.resume(); // restore state first
+      this.showTitle();
+    });
+
+    this.updateFocusHighlight();
+  }
+
   // === XR Controller Navigation ===
 
   handleSelect() {
     if (this.currentScreen === "title") {
       if (this.focusIndex === 0) {
         this.showCourseSelect();
+      } else if (this.focusIndex === 1) {
+        window.dispatchEvent(new CustomEvent("holo-golf-show-leaderboard"));
       } else {
         this.showSettings();
       }
@@ -323,6 +407,14 @@ export class UIManager {
       }
     } else if (this.currentScreen === "settings") {
       this.showTitle();
+    } else if (this.currentScreen === "paused") {
+      if (this.focusIndex === 0) {
+        this.hideUI();
+        this.game.resume();
+      } else {
+        this.game.resume();
+        this.showTitle();
+      }
     } else if (this.currentScreen === "complete") {
       if (this.focusIndex === 0) {
         this.hideUI();
@@ -338,6 +430,10 @@ export class UIManager {
     if (this.currentScreen === "course_select" || this.currentScreen === "settings") {
       this.audio.playMenuSelect();
       this.showTitle();
+    } else if (this.currentScreen === "paused") {
+      this.audio.playMenuSelect();
+      this.hideUI();
+      this.game.resume();
     } else if (this.currentScreen === "complete") {
       this.audio.playMenuSelect();
       this.showTitle();

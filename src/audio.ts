@@ -287,6 +287,44 @@ export class AudioManager {
     this.playTone(280, 0.4, 0.25, "triangle", 0.3);
   }
 
+  playSplash() {
+    // Water splash effect — burst of filtered noise + descending tone
+    const now = this.ctx.currentTime;
+    const bufferSize = Math.floor(this.ctx.sampleRate * 0.4);
+    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      const env = Math.exp(-i / (bufferSize * 0.15));
+      data[i] = (Math.random() * 2 - 1) * env * 0.5;
+    }
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(2000, now);
+    filter.frequency.exponentialRampToValueAtTime(300, now + 0.3);
+    filter.Q.setValueAtTime(1.5, now);
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(0.35, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+    src.start(now);
+
+    // Watery bubbling tones
+    this.playTone(200, 0.15, 0.15, "sine", 0.05);
+    this.playTone(280, 0.12, 0.1, "sine", 0.1);
+    this.playTone(160, 0.2, 0.12, "sine", 0.15);
+  }
+
+  playOOB() {
+    // Out-of-bounds alert — short descending warning
+    this.playTone(600, 0.15, 0.2, "square");
+    this.playTone(400, 0.2, 0.25, "square", 0.1);
+    this.playTone(250, 0.3, 0.2, "square", 0.2);
+  }
+
   playReset() {
     this.playTone(400, 0.1, 0.15, "sine");
     this.playTone(300, 0.1, 0.15, "sine", 0.05);

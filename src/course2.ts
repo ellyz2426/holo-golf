@@ -107,6 +107,9 @@ export const QUANTUM_FIELD_COURSE: CourseData = {
       obstacles: [
         { type: "ramp", position: new Vector3(0, 0.05, 0.8), params: { width: 0.5, depth: 0.4, angle: 0.35 } },
       ],
+      specialObstacles: [
+        { type: "water_hazard", position: new Vector3(0, -0.05, -0.15), params: { size: new Vector3(0.8, 0.01, 1.2), color: 0x3322aa } },
+      ],
       decorations: [
         { type: "ring", position: new Vector3(0, -0.3, 0), params: { radius: 0.4, color: 0x660044 } },
         { type: "pillar", position: new Vector3(-0.5, 0, 2), params: { height: 0.6 } },

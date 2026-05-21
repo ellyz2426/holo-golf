@@ -255,16 +255,16 @@ export class XRInputHandler {
       this.game.onStroke();
     }
 
-    // B button resets ball to tee
+    // B button: pause (single press), or reset ball (hold was previous behavior)
     const bDown = rightGamepad.getButtonDown?.(InputComponent.B_Button);
     if (bDown) {
-      this.game.resetBall();
+      this.game.pause();
     }
 
-    // A button toggles scorecard
+    // A button resets ball to tee
     const aDown = rightGamepad.getButtonDown?.(InputComponent.A_Button);
     if (aDown) {
-      // Could toggle scorecard - for now, handle via browser input
+      this.game.resetBall();
     }
 
     // Left thumbstick orbits camera around ball

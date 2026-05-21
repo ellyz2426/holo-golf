@@ -135,6 +135,11 @@ async function main() {
   // Wire XR camera orbit into browser input system
   browserInput.xrInput = xrInput;
 
+  // Wire ball out-of-bounds callback
+  ball.onOutOfBounds = () => {
+    game.handleBallOOB();
+  };
+
   // Achievements
   const achievements = new AchievementTracker();
   const banner = new HoleBanner();
@@ -168,8 +173,18 @@ async function main() {
     if (state === GameState.COURSE_COMPLETE) {
       const score = game.courseScore;
       const totalPar = score.holes.reduce((s, h) => s + h.par, 0);
+      const holeInOnes = score.holes.filter((h) => h.holeInOne).length;
       achievements.checkCourse(score.totalStrokes, totalPar, score.holes);
       stats.recordRound(score.totalStrokes);
+
+      // Record to leaderboard
+      browserInput.leaderboard.recordScore(
+        game.currentCourseIndex,
+        score.courseName,
+        score.totalStrokes,
+        totalPar,
+        holeInOnes,
+      );
     }
   });
 

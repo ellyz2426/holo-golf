@@ -22,6 +22,7 @@ export enum GameState {
   HOLE_COMPLETE = "hole_complete",
   COURSE_COMPLETE = "course_complete",
   SETTINGS = "settings",
+  PAUSED = "paused",
 }
 
 export interface HoleScore {
@@ -56,6 +57,10 @@ export class GameManager {
   audio: AudioManager;
   private holeTransitionTimer = 0;
   private stateListeners: ((state: GameState) => void)[] = [];
+  private preRestoreState: GameState = GameState.AIMING;
+
+  // Ball last-safe position for OOB/hazard resets
+  private lastSafeBallPos = new Vector3();
 
   constructor(
     world: World,
@@ -128,6 +133,7 @@ export class GameManager {
 
     // Position ball at tee
     this.ball.reset(hole.teePosition.clone());
+    this.lastSafeBallPos.copy(hole.teePosition);
 
     // Position putter near ball
     this.putter.setActive(true);
@@ -141,6 +147,8 @@ export class GameManager {
 
   onStroke() {
     this.currentStrokes++;
+    // Save position before the stroke for OOB recovery
+    this.lastSafeBallPos.copy(this.ball.position);
     this.audio.playPutt();
     this.setState(GameState.BALL_MOVING);
   }
@@ -249,6 +257,73 @@ export class GameManager {
     this.audio.playReset();
   }
 
+  // === Pause / Resume ===
+
+  pause() {
+    if (
+      this.state !== GameState.AIMING &&
+      this.state !== GameState.BALL_MOVING &&
+      this.state !== GameState.PLAYING
+    ) return;
+    this.preRestoreState = this.state;
+    this.setState(GameState.PAUSED);
+  }
+
+  resume() {
+    if (this.state !== GameState.PAUSED) return;
+    this.setState(this.preRestoreState);
+  }
+
+  isPaused(): boolean {
+    return this.state === GameState.PAUSED;
+  }
+
+  // === Out-of-bounds / Water hazard reset ===
+
+  saveSafeBallPosition() {
+    this.lastSafeBallPos.copy(this.ball.position);
+  }
+
+  handleBallOOB() {
+    // Penalty stroke
+    this.currentStrokes++;
+    // Reset ball to last safe position or tee
+    const course = this.courseManager.getCourse(this.currentCourseIndex);
+    const hole = course.holes[this.currentHoleIndex];
+    const resetPos = this.lastSafeBallPos.lengthSq() > 0
+      ? this.lastSafeBallPos.clone()
+      : hole.teePosition.clone();
+    this.ball.reset(resetPos);
+    this.audio.playOOB();
+    this.effects.strokeLimitEffect(resetPos);
+
+    // Check if penalty brings us to stroke limit
+    if (this.currentStrokes >= MAX_STROKES_PER_HOLE) {
+      this.completeHole();
+    } else {
+      this.setState(GameState.AIMING);
+    }
+  }
+
+  handleWaterHazard() {
+    // Penalty stroke
+    this.currentStrokes++;
+    const course = this.courseManager.getCourse(this.currentCourseIndex);
+    const hole = course.holes[this.currentHoleIndex];
+    const resetPos = this.lastSafeBallPos.lengthSq() > 0
+      ? this.lastSafeBallPos.clone()
+      : hole.teePosition.clone();
+    this.ball.reset(resetPos);
+    this.audio.playSplash();
+    this.effects.strokeLimitEffect(resetPos);
+
+    if (this.currentStrokes >= MAX_STROKES_PER_HOLE) {
+      this.completeHole();
+    } else {
+      this.setState(GameState.AIMING);
+    }
+  }
+
   getCurrentHole(): HoleData | null {
     try {
       const course = this.courseManager.getCourse(this.currentCourseIndex);
@@ -273,6 +348,8 @@ export class GameManager {
   }
 
   update(dt: number) {
+    if (this.state === GameState.PAUSED) return;
+
     if (this.state === GameState.HOLE_COMPLETE) {
       this.holeTransitionTimer -= dt;
       if (this.holeTransitionTimer <= 0) {
@@ -285,15 +362,27 @@ export class GameManager {
       this.onBallStopped();
     }
 
-    // Check special zones while ball is moving or aiming (wind/ice)
+    // Check special zones while ball is moving or aiming (wind/ice/water)
     if (
       (this.state === GameState.BALL_MOVING || this.state === GameState.AIMING) &&
       this.ball.isActive
     ) {
+      // Save safe position periodically when ball is on solid ground
+      if (this.state === GameState.BALL_MOVING && this.ball.position.y > -0.5) {
+        this.lastSafeBallPos.copy(this.ball.position);
+      }
+
       const result = this.courseManager.checkBallZones(
         this.ball.position,
         this.ball.velocity,
       );
+
+      // Water hazard
+      if (result.inWater) {
+        this.effects.splashEffect(this.ball.position); // splash particles
+        this.handleWaterHazard();
+        return;
+      }
 
       // Teleporter
       if (result.teleported && result.teleportTarget) {

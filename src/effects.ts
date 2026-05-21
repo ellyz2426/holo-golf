@@ -126,6 +126,13 @@ export class EffectsManager {
     this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.1, 0)), 0xff4400, 1.0);
   }
 
+  splashEffect(pos: Vector3) {
+    // Water splash — blue/cyan particles bursting upward
+    this.spawnParticleBurst(pos, 35, [0x0044ff, 0x0088ff, 0x44aaff, 0x88ccff, 0xffffff], 2.0);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.02, 0)), 0x0066ff, 1.2);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.05, 0)), 0x44aaff, 0.8);
+  }
+
   // Spawn a short-lived pulsing orb for celebration
   private spawnPulsingOrb(pos: Vector3, color: number, duration: number, size: number) {
     const geo = new SphereGeometry(size, 16, 16);

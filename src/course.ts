@@ -38,6 +38,12 @@ import {
   WindZone,
   IceSurface,
 } from "./specialobstacles";
+import {
+  createWaterHazard,
+  updateWaterHazard,
+  isInWaterHazard,
+  WaterHazard,
+} from "./waterhazard";
 
 export interface WallDef {
   normal: Vector3;
@@ -79,7 +85,7 @@ export interface ObstacleDef {
 }
 
 export interface SpecialObstacleDef {
-  type: "teleporter" | "wind_zone" | "ice_surface";
+  type: "teleporter" | "wind_zone" | "ice_surface" | "water_hazard";
   position: Vector3;
   params: Record<string, any>;
 }
@@ -106,6 +112,7 @@ export class CourseManager {
   teleporters: TeleportPad[] = [];
   windZones: WindZone[] = [];
   iceSurfaces: IceSurface[] = [];
+  waterHazards: WaterHazard[] = [];
 
   constructor(world: World) {
     this.world = world;
@@ -131,6 +138,7 @@ export class CourseManager {
     this.teleporters = [];
     this.windZones = [];
     this.iceSurfaces = [];
+    this.waterHazards = [];
   }
 
   buildHole(hole: HoleData) {
@@ -211,6 +219,14 @@ export class CourseManager {
         this.iceSurfaces.push(ice);
         break;
       }
+      case "water_hazard": {
+        const wSize = special.params.size as Vector3 || new Vector3(0.5, 0.01, 0.5);
+        const wColor = special.params.color || 0x0044aa;
+        const water = createWaterHazard(special.position, wSize, wColor);
+        this.holeGroup.add(water.group);
+        this.waterHazards.push(water);
+        break;
+      }
     }
   }
 
@@ -234,6 +250,11 @@ export class CourseManager {
         child.position.z = Math.sin(angle) * 0.1;
       }
     }
+
+    // Animate water hazards
+    for (const water of this.waterHazards) {
+      updateWaterHazard(water, dt);
+    }
   }
 
   // Check special zone interactions with ball
@@ -242,11 +263,13 @@ export class CourseManager {
     teleportTarget?: Vector3;
     windForce: Vector3;
     frictionOverride: number | null;
+    inWater: boolean;
   } {
     let teleported = false;
     let teleportTarget: Vector3 | undefined;
     const windForce = new Vector3();
     let frictionOverride: number | null = null;
+    let inWater = false;
 
     // Check teleporters
     for (const tp of this.teleporters) {
@@ -279,7 +302,15 @@ export class CourseManager {
       }
     }
 
-    return { teleported, teleportTarget, windForce, frictionOverride };
+    // Check water hazards
+    for (const water of this.waterHazards) {
+      if (isInWaterHazard(water, ballPos)) {
+        inWater = true;
+        break;
+      }
+    }
+
+    return { teleported, teleportTarget, windForce, frictionOverride, inWater };
   }
 
   private createPanel(surf: SurfaceDef): Group {
@@ -840,6 +871,9 @@ const COURSES: CourseData[] = [
           { position: new Vector3(0.48, 0.05, 0), size: [0.04, 0.15, 1.5] },
         ],
         obstacles: [],
+        specialObstacles: [
+          { type: "water_hazard", position: new Vector3(0, -0.03, 0), params: { size: new Vector3(0.5, 0.01, 0.5) } },
+        ],
         decorations: [
           { type: "arrow", position: new Vector3(-0.8, 0, 1.5), params: { rotation: Math.PI } },
           { type: "arrow", position: new Vector3(0.3, 0, 1), params: { rotation: -Math.PI / 2 } },

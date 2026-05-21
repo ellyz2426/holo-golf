@@ -64,6 +64,12 @@ export class BallController {
   private floorY = 0.05;
   private stopped = true;
 
+  // Shadow
+  private shadow: Mesh;
+
+  // Out-of-bounds callback
+  onOutOfBounds: (() => void) | null = null;
+
   // Special zone effects
   private windForce = new Vector3();
   private frictionOverride: number | null = null;
@@ -121,6 +127,18 @@ export class BallController {
     this.light = new PointLight(0x00ffff, 0.8, 3);
     this.mesh.add(this.light);
 
+    // Shadow (projected on ground)
+    const shadowGeo = new SphereGeometry(BALL_RADIUS * 2.5, 12, 1);
+    const shadowMat = new MeshBasicMaterial({
+      color: 0x000000,
+      transparent: true,
+      opacity: 0.25,
+    });
+    this.shadow = new Mesh(shadowGeo, shadowMat);
+    this.shadow.scale.set(1, 0.02, 1);
+    world.scene.add(this.shadow);
+    this.shadow.visible = false;
+
     // Trail group + pre-allocated pool
     this.trailGroup = new Group();
     world.scene.add(this.trailGroup);
@@ -145,6 +163,10 @@ export class BallController {
     this.windForce.set(0, 0, 0);
     this.frictionOverride = null;
     this.clearTrail();
+
+    // Update shadow
+    this.shadow.visible = true;
+    this.shadow.position.set(pos.x, pos.y + 0.002, pos.z);
   }
 
   hit(direction: Vector3, power: number) {
@@ -162,6 +184,7 @@ export class BallController {
     this.sinkTarget.y -= 0.1;
     this.sinkTimer = 0;
     this.velocity.set(0, 0, 0);
+    this.shadow.visible = false;
   }
 
   isStopped(): boolean {
@@ -246,10 +269,14 @@ export class BallController {
     // Bumper collisions
     this.checkBumperCollisions();
 
-    // Check if ball fell off course
-    if (this.position.y < -5) {
+    // Check if ball fell off course (OOB)
+    if (this.position.y < -3) {
       this.velocity.set(0, 0, 0);
       this.stopped = true;
+      if (this.onOutOfBounds) {
+        this.onOutOfBounds();
+        return;
+      }
     }
 
     // Stop check
@@ -260,6 +287,13 @@ export class BallController {
 
     // Update mesh
     this.mesh.position.copy(this.position);
+
+    // Update shadow
+    this.shadow.position.set(this.position.x, this.floorY - BALL_RADIUS + 0.003, this.position.z);
+    const shadowHeight = Math.max(0, this.position.y - (this.floorY - BALL_RADIUS));
+    const shadowScale = Math.max(0.3, 1 - shadowHeight * 0.5);
+    this.shadow.scale.set(shadowScale, 0.02, shadowScale);
+    (this.shadow.material as MeshBasicMaterial).opacity = Math.max(0.05, 0.25 - shadowHeight * 0.1);
 
     // Glow pulse
     const pulse = 0.12 + Math.sin(performance.now() * 0.004) * 0.05;
