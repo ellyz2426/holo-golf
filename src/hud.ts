@@ -36,6 +36,7 @@ export class HUDManager {
   private dirty = true;
   private lastState: GameState = GameState.LOADING;
   private lastStrokes = 0;
+  private penaltyFlashTimer = 0;
 
   constructor(world: World, game: GameManager) {
     this.world = world;
@@ -69,12 +70,22 @@ export class HUDManager {
   }
 
   update(dt: number) {
+    if (this.penaltyFlashTimer > 0) {
+      this.penaltyFlashTimer -= dt;
+      this.dirty = true;
+    }
+
     if (this.dirty || this.game.state !== this.lastState || this.game.currentStrokes !== this.lastStrokes) {
       this.redraw();
       this.lastState = this.game.state;
       this.lastStrokes = this.game.currentStrokes;
       this.dirty = false;
     }
+  }
+
+  flashPenalty() {
+    this.penaltyFlashTimer = 1.0;
+    this.dirty = true;
   }
 
   private getTheme() {
@@ -141,6 +152,17 @@ export class HUDManager {
         : "#ffffff";
       ctx.fillStyle = strokeColor;
       ctx.fillText(`STROKES: ${this.game.currentStrokes}/${MAX_STROKES_PER_HOLE}`, 25, 140);
+
+      // Penalty flash indicator
+      if (this.penaltyFlashTimer > 0) {
+        const flashAlpha = Math.min(1, this.penaltyFlashTimer * 2);
+        ctx.fillStyle = `rgba(255, 68, 0, ${flashAlpha * 0.3})`;
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = `rgba(255, 68, 0, ${flashAlpha})`;
+        ctx.font = "bold 18px monospace";
+        ctx.textAlign = "center";
+        ctx.fillText("PENALTY +1", w / 2, h / 2 + 20);
+      }
 
       // Score relative to par
       if (this.game.currentStrokes > 0) {

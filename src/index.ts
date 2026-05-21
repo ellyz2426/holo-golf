@@ -44,6 +44,7 @@ import { HoleBanner } from "./banner";
 import { StatsTracker } from "./stats";
 import { MiniMap } from "./minimap";
 import { PracticeMode } from "./practice";
+import { ToastManager } from "./toast";
 
 const container = document.getElementById("scene-container") as HTMLDivElement;
 
@@ -137,7 +138,15 @@ async function main() {
 
   // Wire ball out-of-bounds callback
   ball.onOutOfBounds = () => {
+    toast.showOutOfBounds();
+    hud.flashPenalty();
     game.handleBallOOB();
+  };
+
+  // Wire water hazard callback
+  game.onWaterHazard = () => {
+    toast.showWaterHazard();
+    hud.flashPenalty();
   };
 
   // Achievements
@@ -146,6 +155,7 @@ async function main() {
   const stats = new StatsTracker();
   const minimap = new MiniMap(game, ball);
   const practice = new PracticeMode(game, audio);
+  const toast = new ToastManager();
 
   // Wire practice mode into UI
   ui.practiceMode = practice;
@@ -162,12 +172,21 @@ async function main() {
       // Switch environment theme when starting a course
       env.applyTheme(game.currentCourseIndex);
       effects.setCourseIndex(game.currentCourseIndex);
+      ball.setCourseTheme(game.currentCourseIndex);
     }
     if (state === GameState.HOLE_COMPLETE) {
       const hole = game.getCurrentHole();
       if (hole) {
         achievements.checkHole(game.currentStrokes, hole.par);
         stats.recordHole(game.currentStrokes, hole.par);
+
+        // Show score name toast
+        const scoreName = game.getScoreName(game.currentStrokes, hole.par);
+        if (game.currentStrokes === 1) {
+          toast.show("HOLE IN ONE!", "#ffff00", "⭐", 3.0);
+        } else if (game.currentStrokes <= hole.par) {
+          toast.show(scoreName, "#00ff88", "✓");
+        }
       }
     }
     if (state === GameState.COURSE_COMPLETE) {
@@ -178,13 +197,16 @@ async function main() {
       stats.recordRound(score.totalStrokes);
 
       // Record to leaderboard
-      browserInput.leaderboard.recordScore(
+      const lbResult = browserInput.leaderboard.recordScore(
         game.currentCourseIndex,
         score.courseName,
         score.totalStrokes,
         totalPar,
         holeInOnes,
       );
+      if (lbResult.isNewBest) {
+        toast.showNewRecord();
+      }
     }
   });
 
@@ -228,6 +250,7 @@ async function main() {
     achievements.update(dt);
     banner.update(dt);
     minimap.update(dt);
+    toast.update(dt);
   });
 
   loadingScreen.setProgress(100, "Welcome to Holo Golf!");

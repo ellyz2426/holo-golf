@@ -74,6 +74,10 @@ export class BallController {
   private windForce = new Vector3();
   private frictionOverride: number | null = null;
 
+  // Course-themed trail colors
+  private trailColor1 = new Color(0x00ffff);
+  private trailColor2 = new Color(0xff4488);
+
   constructor(world: World, audio: AudioManager) {
     this.world = world;
     this.audio = audio;
@@ -197,6 +201,17 @@ export class BallController {
 
   setFrictionOverride(friction: number | null) {
     this.frictionOverride = friction;
+  }
+
+  setCourseTheme(courseIndex: number) {
+    const themes = [
+      { c1: 0x00ffff, c2: 0xff4488 },  // Neon Circuit
+      { c1: 0xff44aa, c2: 0x8844ff },  // Quantum Field
+      { c1: 0xff6600, c2: 0xffaa00 },  // Cosmic Abyss
+    ];
+    const theme = themes[courseIndex] || themes[0];
+    this.trailColor1.set(theme.c1);
+    this.trailColor2.set(theme.c2);
   }
 
   update(dt: number) {
@@ -423,7 +438,7 @@ export class BallController {
         dot.scale.setScalar(t);
         const mat = dot.material as MeshBasicMaterial;
         mat.opacity = t * 0.4;
-        mat.color.lerpColors(new Color(0x00ffff), new Color(0xff4488), t);
+        mat.color.lerpColors(this.trailColor1, this.trailColor2, t);
         dot.visible = true;
       } else {
         dot.visible = false;

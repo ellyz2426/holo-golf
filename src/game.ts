@@ -62,6 +62,9 @@ export class GameManager {
   // Ball last-safe position for OOB/hazard resets
   private lastSafeBallPos = new Vector3();
 
+  // Event callbacks for external notifications
+  onWaterHazard: (() => void) | null = null;
+
   constructor(
     world: World,
     courseManager: CourseManager,
@@ -316,6 +319,9 @@ export class GameManager {
     this.ball.reset(resetPos);
     this.audio.playSplash();
     this.effects.strokeLimitEffect(resetPos);
+
+    // Fire external callback
+    if (this.onWaterHazard) this.onWaterHazard();
 
     if (this.currentStrokes >= MAX_STROKES_PER_HOLE) {
       this.completeHole();

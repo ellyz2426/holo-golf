@@ -114,6 +114,10 @@ export class CourseManager {
   iceSurfaces: IceSurface[] = [];
   waterHazards: WaterHazard[] = [];
 
+  private teeMarker: Group | null = null;
+  private holeCupBeacon: Mesh | null = null;
+  private holeCupRim: Mesh | null = null;
+
   constructor(world: World) {
     this.world = world;
     this.holeGroup = new Group();
@@ -139,6 +143,9 @@ export class CourseManager {
     this.windZones = [];
     this.iceSurfaces = [];
     this.waterHazards = [];
+    this.teeMarker = null;
+    this.holeCupBeacon = null;
+    this.holeCupRim = null;
   }
 
   buildHole(hole: HoleData) {
@@ -184,10 +191,12 @@ export class CourseManager {
     }
 
     // Tee marker
-    this.holeGroup.add(this.createTeeMarker(hole.teePosition));
+    this.teeMarker = this.createTeeMarker(hole.teePosition);
+    this.holeGroup.add(this.teeMarker);
 
     // Hole cup
-    this.holeGroup.add(this.createHoleCup(hole.holePosition));
+    const cupGroup = this.createHoleCup(hole.holePosition);
+    this.holeGroup.add(cupGroup);
 
     // Register colliders
     (this.world as any).__holoGolfWalls = walls;
@@ -254,6 +263,30 @@ export class CourseManager {
     // Animate water hazards
     for (const water of this.waterHazards) {
       updateWaterHazard(water, dt);
+    }
+
+    // Animate tee marker pulse
+    if (this.teeMarker) {
+      const pad = this.teeMarker.children[0] as Mesh;
+      const ring = this.teeMarker.children[1] as Mesh;
+      if (pad && ring) {
+        const pulse = 0.4 + Math.sin(performance.now() * 0.003) * 0.2;
+        (pad.material as MeshBasicMaterial).opacity = pulse;
+        const ringScale = 1 + Math.sin(performance.now() * 0.002) * 0.15;
+        ring.scale.setScalar(ringScale);
+      }
+    }
+
+    // Animate hole cup beacon
+    if (this.holeCupBeacon) {
+      const pulse = 0.2 + Math.sin(performance.now() * 0.004) * 0.15;
+      (this.holeCupBeacon.material as MeshBasicMaterial).opacity = pulse;
+      const beaconScale = 0.8 + Math.sin(performance.now() * 0.003) * 0.2;
+      this.holeCupBeacon.scale.set(1, beaconScale, 1);
+    }
+    if (this.holeCupRim) {
+      const rimPulse = 0.6 + Math.sin(performance.now() * 0.005) * 0.3;
+      (this.holeCupRim.material as MeshBasicMaterial).opacity = rimPulse;
     }
   }
 
@@ -703,6 +736,7 @@ export class CourseManager {
     const rim = new Mesh(rimGeo, rimMat);
     rim.rotation.x = Math.PI / 2;
     group.add(rim);
+    this.holeCupRim = rim;
 
     const beaconGeo = new CylinderGeometry(0.002, 0.002, 0.8, 4);
     const beaconMat = new MeshBasicMaterial({
@@ -714,6 +748,7 @@ export class CourseManager {
     const beacon = new Mesh(beaconGeo, beaconMat);
     beacon.position.y = 0.4;
     group.add(beacon);
+    this.holeCupBeacon = beacon;
 
     const light = new PointLight(0xffff00, 0.5, 2);
     light.position.y = 0.1;
