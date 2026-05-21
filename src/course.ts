@@ -26,6 +26,7 @@ import {
   BufferGeometry,
   Line,
 } from "@iwsdk/core";
+import { QUANTUM_FIELD_COURSE } from "./course2";
 
 export interface WallDef {
   normal: Vector3;
@@ -851,11 +852,6 @@ const COURSES: CourseData[] = [
     ],
   },
 
-  // Course 2 preview (for course select screen)
-  {
-    name: "Quantum Field",
-    description: "Advanced course — coming soon",
-    themeColor: 0xff44aa,
-    holes: [],
-  },
+  // Course 2: Quantum Field (full course)
+  QUANTUM_FIELD_COURSE,
 ];

@@ -108,10 +108,13 @@ export class UIManager {
             </div>
           </div>
 
-          <div style="${this.courseCardStyle(false)}">
-            <div style="font-size: 40px; margin-bottom: 10px;">🔒</div>
-            <div style="font-size: 22px; color: #445566; font-weight: bold;">Quantum Field</div>
-            <div style="font-size: 13px; color: #334455; margin-top: 8px;">Coming Soon</div>
+          <div id="course-1" class="course-card" style="${this.courseCardStyle(true)}">
+            <div style="font-size: 40px; margin-bottom: 10px;">🟣</div>
+            <div style="font-size: 22px; color: #ff44aa; font-weight: bold;">Quantum Field</div>
+            <div style="font-size: 13px; color: #6688aa; margin-top: 8px;">9 Holes • Medium-Hard</div>
+            <div style="font-size: 12px; color: #445566; margin-top: 5px;">
+              ${this.getBestScoreText(1)}
+            </div>
           </div>
         </div>
 
@@ -125,6 +128,12 @@ export class UIManager {
       this.audio.playMenuSelect();
       this.hideUI();
       this.game.startCourse(0);
+    });
+
+    this.overlay.querySelector("#course-1")?.addEventListener("click", () => {
+      this.audio.playMenuSelect();
+      this.hideUI();
+      this.game.startCourse(1);
     });
 
     this.overlay.querySelector("#btn-back")?.addEventListener("click", () => {
