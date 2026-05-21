@@ -1,3 +1,6 @@
+/**
+ * Holo Golf VR — Main Entry Point
+ */
 import {
   World,
   Color,
@@ -59,7 +62,7 @@ async function main() {
   const xrAvailable = await detectXR();
   loadingScreen.setProgress(15, "Creating world...");
 
-  const world = await World.create(container, xrAvailable ? {
+  const worldOpts: any = xrAvailable ? {
     xr: { offer: "once" },
     input: { canvasPointerEvents: true },
     features: {
@@ -80,7 +83,9 @@ async function main() {
       locomotion: false,
       physics: false,
     },
-  });
+  };
+
+  const world = await World.create(container, worldOpts);
 
   loadingScreen.setProgress(30, "Building environment...");
 
@@ -121,7 +126,7 @@ async function main() {
 
   // Input handlers
   const xrInput = new XRInputHandler(world, putter, game, ui);
-  const browserInput = new BrowserInputHandler(world, putter, game, ui, container);
+  const browserInput = new BrowserInputHandler(world, putter, game, ball, ui, container);
 
   // Achievements
   const achievements = new AchievementTracker();
@@ -156,7 +161,28 @@ async function main() {
   // Main update loop
   let lastTime = performance.now();
 
-  world.onUpdate(() => {
+  const onUpdate = (world as any).onUpdate?.bind(world) ?? (world as any).update?.bind(world);
+  const registerUpdate = (fn: () => void) => {
+    if ((world as any).onUpdate) {
+      (world as any).onUpdate(fn);
+    } else if ((world as any).update) {
+      // Fallback: use requestAnimationFrame loop
+      const loop = () => {
+        fn();
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    } else {
+      // Last resort: direct rAF
+      const loop = () => {
+        fn();
+        requestAnimationFrame(loop);
+      };
+      requestAnimationFrame(loop);
+    }
+  };
+
+  registerUpdate(() => {
     const now = performance.now();
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;

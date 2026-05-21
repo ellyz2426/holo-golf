@@ -236,6 +236,31 @@ export class GameManager {
     if (this.state === GameState.BALL_MOVING && this.ball.isStopped()) {
       this.onBallStopped();
     }
+
+    // Check special zones while ball is moving or aiming (wind/ice)
+    if (
+      (this.state === GameState.BALL_MOVING || this.state === GameState.AIMING) &&
+      this.ball.isActive
+    ) {
+      const result = this.courseManager.checkBallZones(
+        this.ball.position,
+        this.ball.velocity,
+      );
+
+      // Teleporter
+      if (result.teleported && result.teleportTarget) {
+        this.ball.reset(result.teleportTarget);
+        this.ball.velocity.set(0, 0, 0);
+        this.audio.playTeleport();
+        this.effects.teleportEffect(this.ball.position);
+      }
+
+      // Wind force
+      this.ball.setWindForce(result.windForce);
+
+      // Ice friction
+      this.ball.setFrictionOverride(result.frictionOverride);
+    }
   }
 
   private createEmptyScore(courseName: string): CourseScore {

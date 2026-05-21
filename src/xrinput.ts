@@ -28,7 +28,9 @@ export class XRInputHandler {
   }
 
   update(dt: number) {
-    const xr = this.world.input?.xr;
+    // Access XR input — handle both 0.3.x and 0.4.x API shapes
+    const input = this.world.input as any;
+    const xr = input?.xr ?? input;
     if (!xr) return;
 
     const rightGamepad = xr.gamepads?.right;
@@ -37,7 +39,8 @@ export class XRInputHandler {
     if (!rightGamepad) return;
 
     // Get right controller position for putter tracking
-    const rightGripSpace = this.world.playerSpaceEntities?.gripSpaces?.right;
+    const playerSpaceEntities = (this.world as any).playerSpaceEntities;
+    const rightGripSpace = playerSpaceEntities?.gripSpaces?.right;
     if (rightGripSpace) {
       const pos = new Vector3();
       const quat = new Quaternion();
@@ -46,7 +49,15 @@ export class XRInputHandler {
       this.putter.updateXR(pos, quat);
     }
 
-    // A button — menu interaction
+    // Trigger — putt
+    const triggerDown = rightGamepad.getButtonDown?.(InputComponent.Trigger);
+    if (triggerDown) {
+      if (this.ui.isVisible()) {
+        this.ui.handleSelect();
+      }
+    }
+
+    // A button — menu interaction / confirm
     const aPressed = rightGamepad.getButtonDown?.(InputComponent.A_Button);
     if (aPressed) {
       if (this.ui.isVisible()) {
@@ -64,7 +75,12 @@ export class XRInputHandler {
       }
     }
 
-    // Squeeze/grip — could be used for ball pickup in future
-    const squeeze = rightGamepad.getButtonPressed?.(InputComponent.Squeeze);
+    // Left thumbstick — navigate menus
+    if (leftGamepad) {
+      const thumbstick = leftGamepad.getAxesValues?.(InputComponent.Thumbstick);
+      if (thumbstick) {
+        // Can be used for menu navigation in the future
+      }
+    }
   }
 }

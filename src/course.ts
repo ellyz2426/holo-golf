@@ -1,6 +1,7 @@
 /**
  * Holo Golf VR — Course Manager
  * Defines hole layouts and builds geometry. Each hole is a neon wireframe platform.
+ * Now supports bumper collision, teleporters, wind zones, and ice surfaces.
  */
 import {
   World,
@@ -27,6 +28,16 @@ import {
   Line,
 } from "@iwsdk/core";
 import { QUANTUM_FIELD_COURSE } from "./course2";
+import { COSMIC_ABYSS_COURSE } from "./course3";
+import type { BumperCollider } from "./ball";
+import {
+  createTeleportPad,
+  createWindZone,
+  createIceSurface,
+  TeleportPad,
+  WindZone,
+  IceSurface,
+} from "./specialobstacles";
 
 export interface WallDef {
   normal: Vector3;
@@ -45,6 +56,7 @@ export interface HoleData {
   walls: WallSegment[];
   obstacles: ObstacleDef[];
   decorations: DecorationDef[];
+  specialObstacles?: SpecialObstacleDef[];
 }
 
 export interface SurfaceDef {
@@ -62,6 +74,12 @@ export interface WallSegment {
 
 export interface ObstacleDef {
   type: "windmill" | "bumper" | "spinner" | "moving_wall" | "ramp";
+  position: Vector3;
+  params: Record<string, any>;
+}
+
+export interface SpecialObstacleDef {
+  type: "teleporter" | "wind_zone" | "ice_surface";
   position: Vector3;
   params: Record<string, any>;
 }
@@ -84,6 +102,11 @@ export class CourseManager {
   private holeGroup: Group;
   private obstacleAnims: Array<{ mesh: any; update: (dt: number) => void }> = [];
 
+  // Special obstacle state
+  teleporters: TeleportPad[] = [];
+  windZones: WindZone[] = [];
+  iceSurfaces: IceSurface[] = [];
+
   constructor(world: World) {
     this.world = world;
     this.holeGroup = new Group();
@@ -104,10 +127,15 @@ export class CourseManager {
     }
     this.obstacleAnims = [];
     (this.world as any).__holoGolfWalls = [];
+    (this.world as any).__holoGolfBumpers = [];
+    this.teleporters = [];
+    this.windZones = [];
+    this.iceSurfaces = [];
   }
 
   buildHole(hole: HoleData) {
     const walls: WallDef[] = [];
+    const bumpers: BumperCollider[] = [];
 
     // Build surfaces (floor panels)
     for (const surf of hole.surfaces) {
@@ -124,10 +152,20 @@ export class CourseManager {
 
     // Build obstacles
     for (const obs of hole.obstacles) {
-      const { mesh, update } = this.createObstacle(obs);
+      const { mesh, update, bumperCollider } = this.createObstacle(obs);
       this.holeGroup.add(mesh);
       if (update) {
         this.obstacleAnims.push({ mesh, update });
+      }
+      if (bumperCollider) {
+        bumpers.push(bumperCollider);
+      }
+    }
+
+    // Build special obstacles
+    if (hole.specialObstacles) {
+      for (const special of hole.specialObstacles) {
+        this.buildSpecialObstacle(special);
       }
     }
 
@@ -143,14 +181,105 @@ export class CourseManager {
     // Hole cup
     this.holeGroup.add(this.createHoleCup(hole.holePosition));
 
-    // Register walls for ball collision
+    // Register colliders
     (this.world as any).__holoGolfWalls = walls;
+    (this.world as any).__holoGolfBumpers = bumpers;
+  }
+
+  private buildSpecialObstacle(special: SpecialObstacleDef) {
+    switch (special.type) {
+      case "teleporter": {
+        const target = special.params.target as Vector3;
+        const pad = createTeleportPad(special.position, target, special.params.color);
+        this.holeGroup.add(pad.group);
+        this.teleporters.push(pad);
+        break;
+      }
+      case "wind_zone": {
+        const dir = special.params.direction as Vector3;
+        const force = special.params.force || 2;
+        const size = special.params.size as Vector3 || new Vector3(1, 0.5, 1);
+        const zone = createWindZone(special.position, dir, force, size);
+        this.holeGroup.add(zone.group);
+        this.windZones.push(zone);
+        break;
+      }
+      case "ice_surface": {
+        const size = special.params.size as Vector3 || new Vector3(1, 0.01, 1);
+        const ice = createIceSurface(special.position, size);
+        this.holeGroup.add(ice.group);
+        this.iceSurfaces.push(ice);
+        break;
+      }
+    }
   }
 
   updateObstacles(dt: number) {
     for (const anim of this.obstacleAnims) {
       anim.update(dt);
     }
+
+    // Animate teleporter pads
+    for (const tp of this.teleporters) {
+      if (tp.cooldown > 0) {
+        tp.cooldown -= dt;
+        if (tp.cooldown <= 0) tp.active = true;
+      }
+      // Rotate orbiting particles
+      const children = tp.group.children;
+      for (let i = 2; i < 6 && i < children.length; i++) {
+        const child = children[i];
+        const angle = performance.now() * 0.002 + (i - 2) * Math.PI * 0.5;
+        child.position.x = Math.cos(angle) * 0.1;
+        child.position.z = Math.sin(angle) * 0.1;
+      }
+    }
+  }
+
+  // Check special zone interactions with ball
+  checkBallZones(ballPos: Vector3, ballVelocity: Vector3): {
+    teleported: boolean;
+    teleportTarget?: Vector3;
+    windForce: Vector3;
+    frictionOverride: number | null;
+  } {
+    let teleported = false;
+    let teleportTarget: Vector3 | undefined;
+    const windForce = new Vector3();
+    let frictionOverride: number | null = null;
+
+    // Check teleporters
+    for (const tp of this.teleporters) {
+      if (!tp.active) continue;
+      const dist = ballPos.distanceTo(tp.position);
+      if (dist < tp.radius) {
+        teleported = true;
+        teleportTarget = tp.targetPosition.clone();
+        tp.active = false;
+        tp.cooldown = 1.5;
+        break;
+      }
+    }
+
+    // Check wind zones
+    for (const wz of this.windZones) {
+      const dx = Math.abs(ballPos.x - wz.position.x);
+      const dz = Math.abs(ballPos.z - wz.position.z);
+      if (dx < wz.size.x / 2 && dz < wz.size.z / 2) {
+        windForce.add(wz.direction.clone().multiplyScalar(wz.force));
+      }
+    }
+
+    // Check ice surfaces
+    for (const ice of this.iceSurfaces) {
+      const dx = Math.abs(ballPos.x - ice.position.x);
+      const dz = Math.abs(ballPos.z - ice.position.z);
+      if (dx < ice.size.x / 2 && dz < ice.size.z / 2) {
+        frictionOverride = ice.friction;
+      }
+    }
+
+    return { teleported, teleportTarget, windForce, frictionOverride };
   }
 
   private createPanel(surf: SurfaceDef): Group {
@@ -158,7 +287,6 @@ export class CourseManager {
     const [w, h, d] = surf.size;
     const color = surf.color || 0x004466;
 
-    // Solid panel
     const geo = new BoxGeometry(w, h, d);
     const mat = new MeshStandardMaterial({
       color: new Color(color),
@@ -171,7 +299,6 @@ export class CourseManager {
     });
     const mesh = new Mesh(geo, mat);
 
-    // Wireframe edges
     const edges = new EdgesGeometry(geo);
     const edgeMat = new LineBasicMaterial({
       color: new Color(color).multiplyScalar(2),
@@ -219,7 +346,6 @@ export class CourseManager {
     mesh.position.copy(wallSeg.position);
     group.add(mesh);
 
-    // Determine wall normal from dimensions
     let normal: Vector3;
     if (w < d) {
       normal = new Vector3(1, 0, 0);
@@ -245,13 +371,16 @@ export class CourseManager {
     return { mesh: group, wallDef };
   }
 
-  private createObstacle(obs: ObstacleDef): { mesh: Group; update?: (dt: number) => void } {
+  private createObstacle(obs: ObstacleDef): {
+    mesh: Group;
+    update?: (dt: number) => void;
+    bumperCollider?: BumperCollider;
+  } {
     const group = new Group();
     group.position.copy(obs.position);
 
     switch (obs.type) {
       case "windmill": {
-        // Rotating arm obstacle
         const armGeo = new BoxGeometry(obs.params.length || 1.0, 0.04, 0.06);
         const armMat = new MeshStandardMaterial({
           color: 0xff4488,
@@ -266,7 +395,6 @@ export class CourseManager {
         );
         arm.add(armEdges);
 
-        // Center post
         const postGeo = new CylinderGeometry(0.03, 0.03, 0.2, 8);
         const postMat = new MeshStandardMaterial({
           color: 0xff4488,
@@ -291,7 +419,8 @@ export class CourseManager {
       }
 
       case "bumper": {
-        const bGeo = new CylinderGeometry(obs.params.radius || 0.1, obs.params.radius || 0.1, 0.12, 16);
+        const radius = obs.params.radius || 0.1;
+        const bGeo = new CylinderGeometry(radius, radius, 0.12, 16);
         const bMat = new MeshStandardMaterial({
           color: 0xffaa00,
           emissive: new Color(0xff8800),
@@ -313,11 +442,15 @@ export class CourseManager {
             const s = 1 + Math.sin(performance.now() * 0.005 * pulseSpeed) * 0.08;
             bumper.scale.set(s, 1, s);
           },
+          bumperCollider: {
+            position: obs.position.clone(),
+            radius,
+            mesh: bumper,
+          },
         };
       }
 
       case "spinner": {
-        // Rotating ring obstacle
         const ringGeo = new TorusGeometry(obs.params.radius || 0.3, 0.02, 8, 24);
         const ringMat = new MeshStandardMaterial({
           color: 0x44ff88,
@@ -420,7 +553,6 @@ export class CourseManager {
         pillar.add(pEdges);
         group.add(pillar);
 
-        // Top orb
         const orbGeo = new SphereGeometry(0.04, 8, 8);
         const orbMat = new MeshBasicMaterial({
           color: 0x00ffff,
@@ -462,7 +594,6 @@ export class CourseManager {
       }
 
       case "arrow": {
-        // Directional arrow on the ground
         const arrowGeo = new BufferGeometry();
         const verts = new Float32Array([
           0, 0.01, -0.1, -0.04, 0.01, 0.05, 0.04, 0.01, 0.05,
@@ -491,7 +622,6 @@ export class CourseManager {
     const group = new Group();
     group.position.copy(pos);
 
-    // Glowing tee pad
     const padGeo = new CylinderGeometry(0.08, 0.08, 0.005, 16);
     const padMat = new MeshBasicMaterial({
       color: 0x00ff88,
@@ -502,7 +632,6 @@ export class CourseManager {
     const pad = new Mesh(padGeo, padMat);
     group.add(pad);
 
-    // Ring around tee
     const ringGeo = new RingGeometry(0.07, 0.09, 24);
     const ringMat = new MeshBasicMaterial({
       color: 0x00ff88,
@@ -523,7 +652,6 @@ export class CourseManager {
     const group = new Group();
     group.position.copy(pos);
 
-    // Hole cup - dark cylinder
     const cupGeo = new CylinderGeometry(0.06, 0.06, 0.08, 16);
     const cupMat = new MeshStandardMaterial({
       color: 0x001122,
@@ -534,7 +662,6 @@ export class CourseManager {
     cup.position.y = -0.04;
     group.add(cup);
 
-    // Glowing rim
     const rimGeo = new TorusGeometry(0.06, 0.008, 8, 24);
     const rimMat = new MeshBasicMaterial({
       color: 0xffff00,
@@ -546,7 +673,6 @@ export class CourseManager {
     rim.rotation.x = Math.PI / 2;
     group.add(rim);
 
-    // Beacon light above hole
     const beaconGeo = new CylinderGeometry(0.002, 0.002, 0.8, 4);
     const beaconMat = new MeshBasicMaterial({
       color: 0xffff00,
@@ -558,12 +684,10 @@ export class CourseManager {
     beacon.position.y = 0.4;
     group.add(beacon);
 
-    // Point light at hole
     const light = new PointLight(0xffff00, 0.5, 2);
     light.position.y = 0.1;
     group.add(light);
 
-    // Flag pole
     const poleGeo = new CylinderGeometry(0.004, 0.004, 0.5, 6);
     const poleMat = new MeshStandardMaterial({
       color: 0xffffff,
@@ -575,7 +699,6 @@ export class CourseManager {
     pole.position.x = 0.04;
     group.add(pole);
 
-    // Flag
     const flagGeo = new PlaneGeometry(0.08, 0.05);
     const flagMat = new MeshBasicMaterial({
       color: 0xff4488,
@@ -601,7 +724,6 @@ const COURSES: CourseData[] = [
     description: "9 holes of holographic mini golf through a neon data-stream",
     themeColor: 0x00ffff,
     holes: [
-      // Hole 1: "Straight Line" — Pure tutorial
       {
         index: 0,
         name: "Straight Line",
@@ -623,8 +745,6 @@ const COURSES: CourseData[] = [
           { type: "arrow", position: new Vector3(0, 0, 0), params: { rotation: Math.PI } },
         ],
       },
-
-      // Hole 2: "The Bend" — L-shaped turn
       {
         index: 1,
         name: "The Bend",
@@ -652,8 +772,6 @@ const COURSES: CourseData[] = [
           { type: "pillar", position: new Vector3(-0.5, 0, 2.5), params: { height: 0.8 } },
         ],
       },
-
-      // Hole 3: "Windmill Alley" — Windmill blocking the path
       {
         index: 2,
         name: "Windmill Alley",
@@ -668,11 +786,7 @@ const COURSES: CourseData[] = [
           { position: new Vector3(0.42, 0.05, 0.5), size: [0.04, 0.15, 6] },
         ],
         obstacles: [
-          {
-            type: "windmill",
-            position: new Vector3(0, 0, 0.5),
-            params: { length: 0.7, speed: 2.0 },
-          },
+          { type: "windmill", position: new Vector3(0, 0, 0.5), params: { length: 0.7, speed: 2.0 } },
         ],
         decorations: [
           { type: "ring", position: new Vector3(0, 0.5, 0.5), params: { radius: 0.3, color: 0xff4488 } },
@@ -680,8 +794,6 @@ const COURSES: CourseData[] = [
           { type: "pillar", position: new Vector3(0.6, 0, 3), params: { height: 0.5 } },
         ],
       },
-
-      // Hole 4: "Bumper Run" — Navigate through bumpers
       {
         index: 3,
         name: "Bumper Run",
@@ -706,8 +818,6 @@ const COURSES: CourseData[] = [
           { type: "orb", position: new Vector3(0.25, 0.3, 0.5), params: { color: 0xffaa00 } },
         ],
       },
-
-      // Hole 5: "The S-Curve" — Winding path
       {
         index: 4,
         name: "The S-Curve",
@@ -736,8 +846,6 @@ const COURSES: CourseData[] = [
           { type: "arrow", position: new Vector3(0.8, 0, 0), params: { rotation: Math.PI } },
         ],
       },
-
-      // Hole 6: "Gauntlet" — Moving walls
       {
         index: 5,
         name: "Gauntlet",
@@ -763,8 +871,6 @@ const COURSES: CourseData[] = [
           { type: "pillar", position: new Vector3(0.6, 0, -3.5), params: { height: 1.0 } },
         ],
       },
-
-      // Hole 7: "Ramp Shot" — Hit ball up a ramp to elevated green
       {
         index: 6,
         name: "Ramp Shot",
@@ -787,8 +893,6 @@ const COURSES: CourseData[] = [
           { type: "pillar", position: new Vector3(0.55, 0, 2.5), params: { height: 0.8 } },
         ],
       },
-
-      // Hole 8: "Spinner's Lair" — Multiple spinning obstacles
       {
         index: 7,
         name: "Spinner's Lair",
@@ -815,8 +919,6 @@ const COURSES: CourseData[] = [
           { type: "ring", position: new Vector3(0, 0.4, -1.5), params: { radius: 0.2, color: 0x44ff88 } },
         ],
       },
-
-      // Hole 9: "Grand Finale" — Everything combined
       {
         index: 8,
         name: "Grand Finale",
@@ -851,7 +953,6 @@ const COURSES: CourseData[] = [
       },
     ],
   },
-
-  // Course 2: Quantum Field (full course)
   QUANTUM_FIELD_COURSE,
+  COSMIC_ABYSS_COURSE,
 ];

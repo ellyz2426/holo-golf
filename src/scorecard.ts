@@ -1,8 +1,10 @@
 /**
  * Holo Golf VR — Scorecard
  * Detailed scorecard display as HTML overlay accessible mid-round.
+ * Dynamically reads hole names from the active course.
  */
 import { GameManager } from "./game";
+import { CourseManager } from "./course";
 
 export class ScorecardOverlay {
   private overlay: HTMLDivElement;
@@ -49,6 +51,11 @@ export class ScorecardOverlay {
   private redraw() {
     const score = this.game.courseScore;
     const totalPar = score.holes.reduce((s, h) => s + h.par, 0);
+    const holeCount = score.holes.length;
+
+    // Get hole names from the course data via game manager
+    const courseManager = (this.game as any).courseManager as CourseManager | undefined;
+    const courseData = courseManager?.getCourse(this.game.currentCourseIndex);
 
     let html = `
       <div style="text-align: center; margin-bottom: 15px;">
@@ -65,14 +72,15 @@ export class ScorecardOverlay {
         </tr>
     `;
 
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < holeCount; i++) {
       const h = score.holes[i];
       const isCurrent = i === this.game.currentHoleIndex;
       const strokes = h.strokes > 0 ? h.strokes :
         (isCurrent ? this.game.currentStrokes : 0);
       const diff = strokes > 0 ? strokes - h.par : 0;
 
-      const holeName = this.getHoleName(i);
+      // Get hole name from course data
+      const holeName = courseData?.holes[i]?.name ?? `Hole ${i + 1}`;
       const bgColor = isCurrent ? "rgba(0, 100, 150, 0.2)" : "transparent";
       const diffColor = diff < 0 ? "#00ff88" : diff === 0 ? "#ffffff" : "#ff6644";
       const diffText = strokes === 0 ? "-" :
@@ -115,14 +123,5 @@ export class ScorecardOverlay {
 
     this.overlay.innerHTML = html;
     this.overlay.addEventListener("click", () => this.hide());
-  }
-
-  private getHoleName(index: number): string {
-    const names = [
-      "Straight Line", "The Bend", "Windmill Alley",
-      "Bumper Run", "The S-Curve", "Gauntlet",
-      "Ramp Shot", "Spinner's Lair", "Grand Finale",
-    ];
-    return names[index] || `Hole ${index + 1}`;
   }
 }

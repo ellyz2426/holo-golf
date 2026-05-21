@@ -80,6 +80,12 @@ export class EffectsManager {
     this.transitionTimer = 0.8;
   }
 
+  teleportEffect(pos: Vector3) {
+    this.spawnParticleBurst(pos, 30, [0x8844ff, 0xaa66ff, 0xcc88ff, 0x4422cc], 2.0);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.05, 0)), 0x8844ff, 1.0);
+    this.spawnExpandingRing(pos.clone().add(new Vector3(0, 0.15, 0)), 0xaa66ff, 0.8);
+  }
+
   private spawnParticleBurst(
     center: Vector3,
     count: number,

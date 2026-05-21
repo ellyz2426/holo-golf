@@ -1,6 +1,7 @@
 /**
  * Holo Golf VR — Ball Controller
- * Custom physics for the golf ball: velocity, friction, slope, walls, hole capture.
+ * Custom physics for the golf ball: velocity, friction, slope, walls,
+ * bumper/obstacle collision, hole capture, and trail effects.
  */
 import {
   World,
@@ -27,7 +28,20 @@ const SLOPE_FORCE = 4.0;
 const MIN_VELOCITY = 0.005;
 const MAX_VELOCITY = 12.0;
 const WALL_BOUNCE = 0.65;
+const BUMPER_BOUNCE = 1.8;
 const GRAVITY = -9.8;
+
+export interface BumperCollider {
+  position: Vector3;
+  radius: number;
+  mesh?: any;
+}
+
+export interface ObstacleCollider {
+  type: "windmill_arm" | "moving_wall";
+  mesh: any;
+  getWorldBounds: () => { min: Vector3; max: Vector3; normal: Vector3 };
+}
 
 export class BallController {
   position = new Vector3(0, 0.05, 0);
@@ -43,11 +57,16 @@ export class BallController {
   private sinkTarget = new Vector3();
   private sinkTimer = 0;
   private trailPositions: Vector3[] = [];
-  private trailMeshes: Mesh[] = [];
+  private trailPool: Mesh[] = [];
+  private trailActiveCount = 0;
   private bounceCount = 0;
   private onFloor = true;
   private floorY = 0.05;
   private stopped = true;
+
+  // Special zone effects
+  private windForce = new Vector3();
+  private frictionOverride: number | null = null;
 
   constructor(world: World, audio: AudioManager) {
     this.world = world;
@@ -102,9 +121,10 @@ export class BallController {
     this.light = new PointLight(0x00ffff, 0.8, 3);
     this.mesh.add(this.light);
 
-    // Trail group
+    // Trail group + pre-allocated pool
     this.trailGroup = new Group();
     world.scene.add(this.trailGroup);
+    this.initTrailPool(50);
 
     world.scene.add(this.mesh);
     this.mesh.visible = false;
@@ -116,11 +136,14 @@ export class BallController {
     this.velocity.set(0, 0, 0);
     this.mesh.position.copy(this.position);
     this.mesh.visible = true;
+    this.mesh.scale.setScalar(1);
     this.isActive = true;
     this.sinking = false;
     this.stopped = true;
     this.bounceCount = 0;
     this.floorY = pos.y + BALL_RADIUS;
+    this.windForce.set(0, 0, 0);
+    this.frictionOverride = null;
     this.clearTrail();
   }
 
@@ -145,6 +168,14 @@ export class BallController {
     return this.stopped && !this.sinking;
   }
 
+  setWindForce(force: Vector3) {
+    this.windForce.copy(force);
+  }
+
+  setFrictionOverride(friction: number | null) {
+    this.frictionOverride = friction;
+  }
+
   update(dt: number) {
     if (!this.isActive) return;
 
@@ -167,9 +198,15 @@ export class BallController {
       return;
     }
 
-    // Apply friction
-    this.velocity.x *= FRICTION;
-    this.velocity.z *= FRICTION;
+    // Apply friction (use override if in special zone)
+    const fric = this.frictionOverride ?? FRICTION;
+    this.velocity.x *= fric;
+    this.velocity.z *= fric;
+
+    // Apply wind force
+    if (this.windForce.lengthSq() > 0) {
+      this.velocity.add(this.windForce.clone().multiplyScalar(dt));
+    }
 
     // Gravity
     if (!this.onFloor) {
@@ -203,12 +240,14 @@ export class BallController {
       this.onFloor = false;
     }
 
-    // Wall collisions — check against current hole walls
+    // Wall collisions
     this.checkWallCollisions();
+
+    // Bumper collisions
+    this.checkBumperCollisions();
 
     // Check if ball fell off course
     if (this.position.y < -5) {
-      // Reset to last valid position or tee
       this.velocity.set(0, 0, 0);
       this.stopped = true;
     }
@@ -227,13 +266,11 @@ export class BallController {
     (this.glowMesh.material as MeshBasicMaterial).opacity = pulse;
     this.light.intensity = 0.5 + speed * 0.3;
 
-    // Update trail
+    // Update trail (optimized pool)
     this.updateTrail();
   }
 
   private checkWallCollisions() {
-    // Wall collision is handled by CourseManager providing wall segments
-    // The ball checks against registered wall planes
     const walls = (this.world as any).__holoGolfWalls as Array<{
       normal: Vector3;
       point: Vector3;
@@ -245,7 +282,6 @@ export class BallController {
     for (const wall of walls) {
       const dist = this.position.clone().sub(wall.point).dot(wall.normal);
       if (dist < BALL_RADIUS) {
-        // Check bounds
         const p = this.position;
         if (
           p.x >= wall.min.x - BALL_RADIUS &&
@@ -255,10 +291,7 @@ export class BallController {
           p.z >= wall.min.z - BALL_RADIUS &&
           p.z <= wall.max.z + BALL_RADIUS
         ) {
-          // Push ball out
           this.position.add(wall.normal.clone().multiplyScalar(BALL_RADIUS - dist));
-
-          // Reflect velocity
           const dot = this.velocity.dot(wall.normal);
           if (dot < 0) {
             this.velocity.sub(wall.normal.clone().multiplyScalar(2 * dot));
@@ -270,43 +303,105 @@ export class BallController {
     }
   }
 
-  private updateTrail() {
-    if (this.stopped) return;
-    const speed = this.velocity.length();
-    if (speed < 0.1) return;
+  private checkBumperCollisions() {
+    const bumpers = (this.world as any).__holoGolfBumpers as BumperCollider[] | undefined;
+    if (!bumpers) return;
 
-    this.trailPositions.push(this.position.clone());
-    if (this.trailPositions.length > 40) {
-      this.trailPositions.shift();
+    for (const bumper of bumpers) {
+      const dx = this.position.x - bumper.position.x;
+      const dz = this.position.z - bumper.position.z;
+      const dist2D = Math.sqrt(dx * dx + dz * dz);
+      const minDist = BALL_RADIUS + bumper.radius;
+
+      if (dist2D < minDist && Math.abs(this.position.y - bumper.position.y) < 0.15) {
+        // Push ball out
+        if (dist2D > 0.001) {
+          const nx = dx / dist2D;
+          const nz = dz / dist2D;
+          this.position.x = bumper.position.x + nx * minDist;
+          this.position.z = bumper.position.z + nz * minDist;
+
+          // Reflect and boost velocity
+          const normal = new Vector3(nx, 0, nz);
+          const dot = this.velocity.dot(normal);
+          if (dot < 0) {
+            this.velocity.sub(normal.multiplyScalar(2 * dot));
+            this.velocity.multiplyScalar(BUMPER_BOUNCE);
+            // Clamp after boost
+            if (this.velocity.length() > MAX_VELOCITY) {
+              this.velocity.normalize().multiplyScalar(MAX_VELOCITY);
+            }
+            this.audio.playBumperHit(this.velocity.length());
+          }
+        }
+      }
     }
+  }
 
-    // Rebuild trail visualization
-    this.trailMeshes.forEach((m) => {
-      m.visible = false;
-      this.trailGroup.remove(m);
-    });
-    this.trailMeshes = [];
+  // === Trail system (object pool) ===
 
-    for (let i = 0; i < this.trailPositions.length; i++) {
-      const t = i / this.trailPositions.length;
-      const size = BALL_RADIUS * 0.5 * t;
-      const geo = new SphereGeometry(size, 4, 4);
+  private initTrailPool(count: number) {
+    const geo = new SphereGeometry(BALL_RADIUS * 0.5, 4, 4);
+    for (let i = 0; i < count; i++) {
       const mat = new MeshBasicMaterial({
         color: 0x00ffff,
         transparent: true,
-        opacity: t * 0.4,
+        opacity: 0,
         blending: AdditiveBlending,
       });
       const dot = new Mesh(geo, mat);
-      dot.position.copy(this.trailPositions[i]);
+      dot.visible = false;
       this.trailGroup.add(dot);
-      this.trailMeshes.push(dot);
+      this.trailPool.push(dot);
+    }
+  }
+
+  private updateTrail() {
+    if (this.stopped) {
+      // Fade out existing trail
+      for (let i = 0; i < this.trailActiveCount; i++) {
+        const dot = this.trailPool[i];
+        const mat = dot.material as MeshBasicMaterial;
+        mat.opacity *= 0.9;
+        if (mat.opacity < 0.01) {
+          dot.visible = false;
+        }
+      }
+      return;
+    }
+
+    const speed = this.velocity.length();
+    if (speed < 0.1) return;
+
+    // Add current position
+    this.trailPositions.push(this.position.clone());
+    if (this.trailPositions.length > this.trailPool.length) {
+      this.trailPositions.shift();
+    }
+
+    // Update pool meshes
+    this.trailActiveCount = this.trailPositions.length;
+    for (let i = 0; i < this.trailPool.length; i++) {
+      const dot = this.trailPool[i];
+      if (i < this.trailPositions.length) {
+        const t = i / this.trailPositions.length;
+        dot.position.copy(this.trailPositions[i]);
+        dot.scale.setScalar(t);
+        const mat = dot.material as MeshBasicMaterial;
+        mat.opacity = t * 0.4;
+        mat.color.lerpColors(new Color(0x00ffff), new Color(0xff4488), t);
+        dot.visible = true;
+      } else {
+        dot.visible = false;
+      }
     }
   }
 
   private clearTrail() {
     this.trailPositions = [];
-    this.trailMeshes.forEach((m) => this.trailGroup.remove(m));
-    this.trailMeshes = [];
+    this.trailActiveCount = 0;
+    for (const dot of this.trailPool) {
+      dot.visible = false;
+    }
   }
 }

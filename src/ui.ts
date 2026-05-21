@@ -87,7 +87,6 @@ export class UIManager {
 
   showCourseSelect() {
     this.currentScreen = "course_select";
-    const courseCount = 2; // We have 2 courses (1 playable + 1 coming soon)
 
     this.overlay.innerHTML = `
       <div style="
@@ -98,22 +97,32 @@ export class UIManager {
         <h2 style="color: #00ffff; font-size: 36px; letter-spacing: 4px; margin-bottom: 30px;
           text-shadow: 0 0 15px #00ffff;">SELECT COURSE</h2>
 
-        <div style="display: flex; gap: 30px;">
+        <div style="display: flex; gap: 20px; flex-wrap: wrap; justify-content: center;">
           <div id="course-0" class="course-card" style="${this.courseCardStyle(true)}">
             <div style="font-size: 40px; margin-bottom: 10px;">🟢</div>
-            <div style="font-size: 22px; color: #00ffff; font-weight: bold;">Neon Circuit</div>
-            <div style="font-size: 13px; color: #6688aa; margin-top: 8px;">9 Holes • Easy-Medium</div>
-            <div style="font-size: 12px; color: #445566; margin-top: 5px;">
+            <div style="font-size: 20px; color: #00ffff; font-weight: bold;">Neon Circuit</div>
+            <div style="font-size: 12px; color: #6688aa; margin-top: 6px;">9 Holes • Easy-Medium</div>
+            <div style="font-size: 11px; color: #445566; margin-top: 4px;">
               ${this.getBestScoreText(0)}
             </div>
           </div>
 
           <div id="course-1" class="course-card" style="${this.courseCardStyle(true)}">
             <div style="font-size: 40px; margin-bottom: 10px;">🟣</div>
-            <div style="font-size: 22px; color: #ff44aa; font-weight: bold;">Quantum Field</div>
-            <div style="font-size: 13px; color: #6688aa; margin-top: 8px;">9 Holes • Medium-Hard</div>
-            <div style="font-size: 12px; color: #445566; margin-top: 5px;">
+            <div style="font-size: 20px; color: #ff44aa; font-weight: bold;">Quantum Field</div>
+            <div style="font-size: 12px; color: #6688aa; margin-top: 6px;">9 Holes • Medium-Hard</div>
+            <div style="font-size: 11px; color: #445566; margin-top: 4px;">
               ${this.getBestScoreText(1)}
+            </div>
+          </div>
+
+          <div id="course-2" class="course-card" style="${this.courseCardStyle(true)}">
+            <div style="font-size: 40px; margin-bottom: 10px;">🔴</div>
+            <div style="font-size: 20px; color: #ff6600; font-weight: bold;">Cosmic Abyss</div>
+            <div style="font-size: 12px; color: #6688aa; margin-top: 6px;">9 Holes • Expert</div>
+            <div style="font-size: 11px; color: #ff6644; margin-top: 4px;">🌀 Teleporters • 💨 Wind • ❄️ Ice</div>
+            <div style="font-size: 11px; color: #445566; margin-top: 2px;">
+              ${this.getBestScoreText(2)}
             </div>
           </div>
         </div>
@@ -134,6 +143,12 @@ export class UIManager {
       this.audio.playMenuSelect();
       this.hideUI();
       this.game.startCourse(1);
+    });
+
+    this.overlay.querySelector("#course-2")?.addEventListener("click", () => {
+      this.audio.playMenuSelect();
+      this.hideUI();
+      this.game.startCourse(2);
     });
 
     this.overlay.querySelector("#btn-back")?.addEventListener("click", () => {
