@@ -31,6 +31,10 @@ export class UIManager {
   // Practice mode
   practiceMode: PracticeMode | null = null;
 
+  // Ball skins (Round 6)
+  ballSkins: any = null;
+  onSkinChange: ((skinId: string) => void) | null = null;
+
   constructor(world: World, game: GameManager, audio: AudioManager) {
     this.world = world;
     this.game = game;
@@ -196,6 +200,35 @@ export class UIManager {
     this.focusIndex = 0;
     this.focusableCount = 1;
 
+    // Build ball skin HTML if available
+    let skinHtml = '';
+    if (this.ballSkins) {
+      const skins = this.ballSkins.getAllSkins();
+      const activeSkinId = this.ballSkins.getActiveSkinId();
+      skinHtml = `
+        <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid #223344;">
+          <label style="color: #6688aa; font-size: 14px; display: block; margin-bottom: 10px;">BALL SKIN</label>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;">
+            ${skins.map((s: any) => `
+              <div class="skin-btn" data-skin="${s.id}" style="
+                width: 60px; height: 60px; display: flex; flex-direction: column;
+                align-items: center; justify-content: center; cursor: ${s.unlocked ? 'pointer' : 'default'};
+                border: 2px solid ${s.id === activeSkinId ? '#ffaa00' : s.unlocked ? '#334455' : '#1a1a2a'};
+                background: ${s.unlocked ? 'rgba(0, 15, 30, 0.6)' : 'rgba(0, 5, 10, 0.8)'};
+                border-radius: 4px; opacity: ${s.unlocked ? '1' : '0.4'};
+                ${s.id === activeSkinId ? 'box-shadow: 0 0 10px rgba(255, 170, 0, 0.3);' : ''}
+              ">
+                <div style="font-size: 20px;">${s.icon}</div>
+                <div style="font-size: 8px; color: ${s.unlocked ? '#aabbcc' : '#334455'}; margin-top: 2px;">
+                  ${s.name.split(' ')[0]}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     this.overlay.innerHTML = `
       <div style="
         display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -221,6 +254,7 @@ export class UIManager {
             <input id="vol-sfx" type="range" min="0" max="100" value="70"
               style="${this.sliderStyle()}">
           </div>
+          ${skinHtml}
         </div>
 
         <button id="btn-back" style="${this.buttonStyle('#445566', '#334455')}; margin-top: 20px;" data-focus="0">
@@ -238,6 +272,18 @@ export class UIManager {
     this.overlay.querySelector("#vol-sfx")?.addEventListener("input", (e) => {
       this.audio.setSFXVolume(parseInt((e.target as HTMLInputElement).value) / 100);
     });
+
+    // Ball skin selection
+    this.overlay.querySelectorAll(".skin-btn").forEach((el) => {
+      el.addEventListener("click", () => {
+        const skinId = (el as HTMLElement).dataset.skin;
+        if (skinId && this.onSkinChange) {
+          this.onSkinChange(skinId);
+          this.showSettings(); // refresh to show updated selection
+        }
+      });
+    });
+
     this.overlay.querySelector("#btn-back")?.addEventListener("click", () => {
       this.audio.playMenuSelect();
       this.showTitle();

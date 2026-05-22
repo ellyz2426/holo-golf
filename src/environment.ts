@@ -175,6 +175,9 @@ export class EnvironmentBuilder {
       this.themeGroup.add(light);
       this.dynamicPointLights.push(light);
     }
+
+    // Floating ambient particles
+    this.buildFloatingParticles(theme);
   }
 
   private clearThemeElements() {
@@ -199,6 +202,7 @@ export class EnvironmentBuilder {
     }
     this.ambientOrbs = [];
     this.dynamicPointLights = [];
+    this.floatingParticles = [];
   }
 
   private buildGrid(theme: CourseTheme) {
@@ -305,6 +309,52 @@ export class EnvironmentBuilder {
     }
   }
 
+  // === Ambient Floating Particles (Round 6) ===
+  private floatingParticles: Array<{
+    mesh: Mesh;
+    baseY: number;
+    speed: number;
+    phase: number;
+    drift: { x: number; z: number };
+  }> = [];
+  private particleTime = 0;
+
+  private buildFloatingParticles(theme: CourseTheme) {
+    const colors = theme.starColors;
+    const count = 40;
+
+    for (let i = 0; i < count; i++) {
+      const geo = new SphereGeometry(0.015 + Math.random() * 0.02, 4, 4);
+      const colorArr = colors[Math.floor(Math.random() * colors.length)];
+      const color = new Color(colorArr[0], colorArr[1], colorArr[2]);
+      const mat = new MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.15 + Math.random() * 0.15,
+        blending: AdditiveBlending,
+      });
+      const mesh = new Mesh(geo, mat);
+
+      // Random position in play area
+      const x = (Math.random() - 0.5) * 16;
+      const baseY = 0.5 + Math.random() * 4;
+      const z = (Math.random() - 0.5) * 16;
+      mesh.position.set(x, baseY, z);
+
+      this.floatingParticles.push({
+        mesh,
+        baseY,
+        speed: 0.2 + Math.random() * 0.5,
+        phase: Math.random() * Math.PI * 2,
+        drift: {
+          x: (Math.random() - 0.5) * 0.3,
+          z: (Math.random() - 0.5) * 0.3,
+        },
+      });
+      this.themeGroup.add(mesh);
+    }
+  }
+
   update(dt: number) {
     // Rotate ambient geometry
     for (const orb of this.ambientOrbs) {
@@ -323,6 +373,23 @@ export class EnvironmentBuilder {
     // Slow starfield rotation
     if (this.starfield) {
       this.starfield.rotation.y += dt * 0.005;
+    }
+
+    // Floating particles
+    this.particleTime += dt;
+    for (const p of this.floatingParticles) {
+      const t = this.particleTime * p.speed + p.phase;
+      p.mesh.position.y = p.baseY + Math.sin(t) * 0.5;
+      p.mesh.position.x += p.drift.x * dt * 0.1;
+      p.mesh.position.z += p.drift.z * dt * 0.1;
+
+      // Gentle opacity pulse
+      (p.mesh.material as MeshBasicMaterial).opacity =
+        0.12 + Math.sin(t * 1.5) * 0.08;
+
+      // Wrap around if drifted too far
+      if (Math.abs(p.mesh.position.x) > 12) p.drift.x *= -1;
+      if (Math.abs(p.mesh.position.z) > 12) p.drift.z *= -1;
     }
   }
 }

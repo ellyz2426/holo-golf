@@ -467,4 +467,24 @@ export class BallController {
       dot.visible = false;
     }
   }
+
+  /** Apply a ball skin's colors to the ball, glow, trail, and light */
+  applySkin(ballColor: number, emissiveColor: number, glowColor: number, trailC1: number, trailC2: number) {
+    const mat = this.mesh.material as MeshStandardMaterial;
+    mat.color.set(ballColor);
+    mat.emissive.set(emissiveColor);
+
+    (this.glowMesh.material as MeshBasicMaterial).color.set(glowColor);
+    this.light.color.set(ballColor);
+
+    this.trailColor1.set(trailC1);
+    this.trailColor2.set(trailC2);
+
+    // Update wireframe edges color
+    for (const child of this.mesh.children) {
+      if ((child as any).isLineSegments) {
+        ((child as LineSegments).material as LineBasicMaterial).color.set(ballColor);
+      }
+    }
+  }
 }

@@ -46,6 +46,11 @@ import { MiniMap } from "./minimap";
 import { PracticeMode } from "./practice";
 import { ToastManager } from "./toast";
 import { ScanlineOverlay, CameraShake, SlowMotionController, StreakTracker } from "./postfx";
+import { GhostBallSystem } from "./ghost";
+import { WindIndicator } from "./windindicator";
+import { BallSkinManager } from "./ballskins";
+import { MiniScorecard } from "./miniscore";
+import { HolePreviewCamera } from "./holepreview";
 
 const container = document.getElementById("scene-container") as HTMLDivElement;
 
@@ -169,6 +174,11 @@ async function main() {
   const cameraShake = new CameraShake();
   const slowMo = new SlowMotionController();
   const streakTracker = new StreakTracker();
+  const ghostBall = new GhostBallSystem(world);
+  const windIndicator = new WindIndicator(world);
+  const ballSkins = new BallSkinManager();
+  const miniScorecard = new MiniScorecard();
+  const holePreview = new HolePreviewCamera();
 
   // Start rolling sound system (will be silent until ball moves)
   audio.startRolling();
@@ -176,12 +186,33 @@ async function main() {
   // Wire practice mode into UI
   ui.practiceMode = practice;
 
+  // Wire wind indicator to ball
+  windIndicator.setBall(ball);
+
+  // Apply initial ball skin
+  const activeSkin = ballSkins.getActiveSkin();
+  ball.applySkin(activeSkin.ballColor, activeSkin.emissiveColor, activeSkin.glowColor, activeSkin.trailColor1, activeSkin.trailColor2);
+
+  // Wire ball skin manager into UI
+  ui.ballSkins = ballSkins;
+  ui.onSkinChange = (skinId: string) => {
+    ballSkins.setActiveSkin(skinId);
+    const skin = ballSkins.getActiveSkin();
+    ball.applySkin(skin.ballColor, skin.emissiveColor, skin.glowColor, skin.trailColor1, skin.trailColor2);
+  };
+
   // Hook state changes for environment theming + achievements
   game.onStateChange((state) => {
     if (state === GameState.AIMING) {
       const hole = game.getCurrentHole();
       if (hole && game.currentStrokes === 0) {
         banner.show(hole.index + 1, hole.name, hole.par);
+        // Start ghost recording and playback for this hole
+        ghostBall.startRecording();
+        ghostBall.startPlayback(game.currentCourseIndex, game.currentHoleIndex);
+
+        // Show mini scorecard
+        miniScorecard.show();
       }
     }
     if (state === GameState.PLAYING) {
@@ -190,12 +221,26 @@ async function main() {
       effects.setCourseIndex(game.currentCourseIndex);
       ball.setCourseTheme(game.currentCourseIndex);
       streakTracker.reset();
+
+      // Apply active ball skin (may override course theme for trail)
+      const skin = ballSkins.getActiveSkin();
+      if (skin.id !== "default") {
+        ball.applySkin(skin.ballColor, skin.emissiveColor, skin.glowColor, skin.trailColor1, skin.trailColor2);
+      }
     }
     if (state === GameState.HOLE_COMPLETE) {
       const hole = game.getCurrentHole();
       if (hole) {
         achievements.checkHole(game.currentStrokes, hole.par);
         stats.recordHole(game.currentStrokes, hole.par);
+
+        // Save ghost recording and stop playback
+        ghostBall.stopRecording();
+        ghostBall.saveIfBest(game.currentCourseIndex, game.currentHoleIndex, game.currentStrokes);
+        ghostBall.stopPlayback();
+
+        // Hide wind indicator
+        windIndicator.hide();
 
         // Distinct score SFX based on performance
         const diff = game.currentStrokes - hole.par;
@@ -238,6 +283,19 @@ async function main() {
       const holeInOnes = score.holes.filter((h) => h.holeInOne).length;
       achievements.checkCourse(score.totalStrokes, totalPar, score.holes);
       stats.recordRound(score.totalStrokes);
+      stats.recordCourseComplete(game.currentCourseIndex);
+
+      // Hide mini scorecard
+      miniScorecard.hide();
+
+      // Update ball skin unlock stats
+      ballSkins.updateStats({
+        totalRounds: stats.getTotalRounds(),
+        totalHoleInOnes: stats.getTotalHoleInOnes(),
+        coursesCompleted: stats.getCoursesCompleted(),
+        bestStreaks: streakTracker.state.bestStreak,
+        achievementIds: achievements.getUnlocked().map((a) => a.id),
+      });
 
       // Record to leaderboard
       const lbResult = browserInput.leaderboard.recordScore(
@@ -299,6 +357,55 @@ async function main() {
     minimap.update(dt);
     toast.update(dt);
     streakTracker.update(dt);
+    ghostBall.update(gameDt);
+    windIndicator.update(gameDt);
+    holePreview.update(gameDt);
+
+    // Ghost ball recording
+    if (game.state === GameState.BALL_MOVING && ball.isActive) {
+      ghostBall.recordFrame(gameDt, ball.position);
+      // Trigger ghost playback on first stroke
+      ghostBall.triggerPlaybackStart();
+    }
+
+    // Wind indicator: show when ball is near wind zones
+    if (
+      (game.state === GameState.BALL_MOVING || game.state === GameState.AIMING) &&
+      ball.isActive
+    ) {
+      const windResult = game.courseManager.getWindAtPosition(ball.position);
+      if (windResult && windResult.force > 0) {
+        windIndicator.show(windResult.direction, windResult.force);
+      } else {
+        windIndicator.hide();
+      }
+    }
+
+    // Mini scorecard update
+    if (
+      game.state === GameState.AIMING ||
+      game.state === GameState.BALL_MOVING
+    ) {
+      const hole = game.getCurrentHole();
+      const course = game.courseManager.getCourse(game.currentCourseIndex);
+      if (hole && course) {
+        const completedScores = game.courseScore.holes
+          .filter((h) => h.strokes > 0)
+          .map((h) => ({ strokes: h.strokes, par: h.par }));
+        const totalPar = completedScores.reduce((s, h) => s + h.par, 0);
+        miniScorecard.update(
+          course.name,
+          game.currentCourseIndex,
+          game.currentHoleIndex,
+          course.holes.length,
+          game.currentStrokes,
+          hole.par,
+          game.courseScore.totalStrokes + game.currentStrokes,
+          totalPar + hole.par,
+          completedScores,
+        );
+      }
+    }
 
     // Rolling ball sound — update volume based on ball speed
     const ballSpeed = ball.velocity.length();

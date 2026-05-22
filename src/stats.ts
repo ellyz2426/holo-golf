@@ -72,6 +72,35 @@ export class StatsTracker {
     return { ...this.stats };
   }
 
+  getTotalRounds(): number {
+    return this.stats.totalRounds;
+  }
+
+  getTotalHoleInOnes(): number {
+    return this.stats.holeInOnes;
+  }
+
+  /** Return list of course indices that have been completed at least once.
+   *  We track this via a stored array in localStorage. */
+  getCoursesCompleted(): number[] {
+    try {
+      const data = localStorage.getItem("holo-golf-courses-completed");
+      return data ? JSON.parse(data) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  recordCourseComplete(courseIndex: number) {
+    const completed = this.getCoursesCompleted();
+    if (!completed.includes(courseIndex)) {
+      completed.push(courseIndex);
+      try {
+        localStorage.setItem("holo-golf-courses-completed", JSON.stringify(completed));
+      } catch {}
+    }
+  }
+
   private save() {
     try {
       localStorage.setItem("holo-golf-stats", JSON.stringify(this.stats));

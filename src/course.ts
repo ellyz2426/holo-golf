@@ -410,6 +410,27 @@ export class CourseManager {
     return { teleported, teleportTarget, windForce, frictionOverride, inWater, gravityForce, speedBoost };
   }
 
+  /** Get wind direction and force at a specific position (for wind indicator) */
+  getWindAtPosition(ballPos: Vector3): { direction: Vector3; force: number } | null {
+    const windForce = new Vector3();
+    let totalForce = 0;
+
+    for (const wz of this.windZones) {
+      const dx = Math.abs(ballPos.x - wz.position.x);
+      const dz = Math.abs(ballPos.z - wz.position.z);
+      // Slightly larger detection radius for indicator (1.5x zone size)
+      if (dx < wz.size.x * 0.75 && dz < wz.size.z * 0.75) {
+        windForce.add(wz.direction.clone().multiplyScalar(wz.force));
+        totalForce += wz.force;
+      }
+    }
+
+    if (totalForce > 0) {
+      return { direction: windForce.clone().normalize(), force: totalForce };
+    }
+    return null;
+  }
+
   private createPanel(surf: SurfaceDef): Group {
     const group = new Group();
     const [w, h, d] = surf.size;
